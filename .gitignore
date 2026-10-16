@@ -1,0 +1,44 @@
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Crush internal state
+.crush/
+
+# Python bytecode / caches
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# Test / tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Pipeline outputs (depth maps, annotated overlays, results json/csv).
+# Ignore the contents but keep the empty directory tracked via .gitkeep.
+outputs/*
+!outputs/.gitkeep
+test/outputs/*
+!test/outputs/.gitkeep
+
+# Downloaded model weights and caches
+*.pt
+*.pth
+*.onnx
+*.engine
+.cache/
+*.cache/
+
+# Editor / OS cruft
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

@@ -1,0 +1,22 @@
+# Zero-Shot Monocular Depth Estimation pipeline dependencies.
+# Install with: pip install -r requirements.txt
+#
+# NOTE: on a headless host, ultralytics imports cv2 and stock opencv-python
+# needs GUI libs (libxcb.so.1); opencv-python-headless satisfies that import.
+#
+# NOTE: Python 3.14 wheels for torch/transformers are recent; if installs fail,
+# use a Python 3.11/3.12 virtualenv instead (see AGENTS.md).
+#
+# For a CUDA build of torch, install from the PyTorch index first, e.g.:
+#   pip install torch --index-url https://download.pytorch.org/whl/cu124
+
+numpy==2.5.4
+pillow==12.3.0
+
+# Depth foundation models: Depth Anything V2 (*-hf checkpoints) and MiDaS (DPT).
+torch==2.14.1
+transformers==5.19.0
+
+# Object detection / bounding boxes.
+ultralytics==8.4.176
+opencv-python-headless==5.0.0.93
