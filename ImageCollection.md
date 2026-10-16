@@ -375,13 +375,26 @@ mode) or in `notes`. Name the files as `<parent>_<filter>.jpg`, e.g.
 
 ## 12. Tooling still to build
 
-- [ ] `--anchor-file <path>` in `test_pipeline.py` so the two cup anchors can be
+- [x] `--anchor-file <path>` in `test_pipeline.py` so the two cup anchors can be
       read straight from `anchor.txt` instead of being retyped per image.
-- [ ] `--batch <folder>` mode in `test_pipeline.py` to process all 100 images
-      in one run (usually one anchor pair for the whole set; allow a per-mode
-      anchor file if `nv` shifts the framing, Section 4).
-- [ ] `test/eval_accuracy.py` to join the pipeline `_results.csv` outputs with
-      `ground_truth.csv` and emit RMSE / MAE overall and broken down by
-      distance and lighting (the Step-7 table).
+- [x] Batch mode in `test_pipeline.py` to process a whole dataset folder in one
+      run: `--dataset <root>` scans recursively, auto-discovers `anchor.txt`, and
+      `--depth-model all` runs small + base + large. Evaluation is written
+      alongside: `eval_per_image.csv`, `eval_summary.csv`, `eval_by_lighting.csv`,
+      `eval_by_distance.csv` (MAE / RMSE of Z on the middle object), so no separate
+      `eval_accuracy.py` is needed.
 - [ ] A check that flags an image where a cup's sampled depth drifted far from
       its session baseline (mis-aimed camera or moved cup).
+
+### One-command batch run (current)
+
+```bash
+# whole dataset, three depth models, auto anchors + auto eval:
+python test_pipeline.py --dataset dataset --depth-model all --calib inverse
+```
+
+Results land under `outputs/<model>/<lighting>/<bottle>/`, with the evaluation at
+the top of `outputs/`. Ground truth is read from `ground_truth.csv` if present,
+otherwise the true distance is parsed from the filename and the lighting from the
+folder.
+

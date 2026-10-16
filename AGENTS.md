@@ -73,7 +73,29 @@ python test_pipeline.py --image photo.jpg --target bottle --calib inverse \
     --anchor 1463,935,0.2 --anchor 1229,308,1.0          # disparity (1/Z) fit
 python test_pipeline.py --image photo.jpg --target bottle --depth-model midas \
     --object-height 0.20                                # MiDaS control baseline
+
+# Batch mode: scan a dataset folder, auto-read anchor.txt, run every image,
+# write an evaluation.  --depth-model all = small + base + large.
+python test_pipeline.py --dataset dataset --depth-model all --calib inverse
+python test_pipeline.py --dataset dataset/white --depth-model large --conf 0.2
 ```
+
+Batch mode (`--dataset <root>`) walks the folder recursively, finds the anchors
+from `--anchor` / `--anchor-file` / an `anchor.txt` next to the dataset, runs
+each image through every requested model (reusing each model across the batch),
+and writes the results under `<out>/<model>/<relative path>/` plus four eval
+files at the top of `<out>`: `eval_per_image.csv`, `eval_summary.csv`,
+`eval_by_lighting.csv`, `eval_by_distance.csv`. The evaluation is computed on the
+**middle object** (the detection whose box centre lies between the two anchor
+pixels), with MAE / RMSE of Z in cm and the relative %; ground truth comes from a
+`ground_truth.csv` (Section 8 schema) if one sits next to the dataset, otherwise
+from the filename (`..._50cm` / `..._d050_...`) and the lighting folder/token.
+
+Ground truth is **optional** - without it the batch still sizes every image and
+prints the model outputs (Z / W / H); it never errors. `--no-eval` skips the
+evaluation deliberately and prints predictions only. The cup anchors are not
+ground truth: they are the fixed calibration constant that turns relative depth
+into meters (and `--distance` / `--object-height` work when there are no cups).
 
 `test_sizing.py` and `test_pipeline.py` need a calibration anchor (a
 tape-measured distance) to turn relative depth into meters: `--distance <m>` for

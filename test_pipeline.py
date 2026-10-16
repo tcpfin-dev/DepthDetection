@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Combined zero-shot metric-sizing pipeline (single command).
+"""Combined zero-shot metric-sizing pipeline (single command + batch mode).
 
 This is the joined version of the two smoke scripts plus the geometric sizing
 logic. One command runs the whole pipeline from ``Research_Proposals.md``:
@@ -23,6 +23,8 @@ is required to pin it to reality:
     --anchor U,V,DIST         repeat two or more times for a full affine
                               least-squares fit; the model then predicts Z for
                               every object on its own
+    --anchor-file PATH        read the anchors straight from an anchor.txt
+                              (lines like "cup1 anchor (636, 663, 40cm)")
     --object-height 0.20      known real height (m) of the --target class; the
                               distance is recovered from the box height and the
                               focal length (no depth anchor needed)
@@ -32,21 +34,61 @@ fits ``Z = alpha*D + beta`` as in the proposal. ``inverse`` fits the disparity
 ``1/Z = alpha*D + beta``, which matches the roughly inverse-depth output of
 monocular depth models and interpolates far more accurately between anchors:
 
-    python test_pipeline.py --image image1.png --target bottle --calib inverse \
+    python test_pipeline.py --image image1.png --target bottle --calib inverse \\
         --anchor 1463,935,0.2 --anchor 1229,308,1.0
 
 Camera intrinsics come from ``--fx/--fy`` if given, otherwise from EXIF
 (``FocalLengthIn35mmFilm``, matching the proposal's "student setup shortcut"),
 otherwise an assumed ``--hfov`` (65 deg) is used.
 
+Batch / dataset mode
+--------------------
+Pass ``--dataset <root>`` to size a whole dataset in one shot. The script then
+
+  * walks ``<root>`` recursively and picks up every image,
+  * finds the cup anchors itself - ``--anchor`` if given, else ``--anchor-file``,
+    else an ``anchor.txt`` next to the dataset root (or its parent),
+  * if ``--depth-model all`` is given, runs **small + base + large** and reports
+    how each one does.
+
+    # one command for the whole dataset, all three depth models:
+    python test_pipeline.py --dataset dataset --depth-model all --out outputs
+
+Output layout in batch mode (mirrors the dataset tree, one subdir per model):
+
+    <out>/<model>/<relative/path>/<stem>_{pipeline,depth_color,depth_gray}.png
+    <out>/<model>/<relative/path>/<stem>_results.json | _results.csv
+    <out>/eval_per_image.csv     one row per (model, image), middle object only
+    <out>/eval_summary.csv       MAE / RMSE of Z per model
+    <out>/eval_by_lighting.csv   the same, grouped by lighting token
+    <out>/eval_by_distance.csv   the same, grouped by true distance
+
+The evaluation picks the **middle object** (the detection whose box centre sits
+between the two anchor pixels), matching ``ImageCollection.md``. Ground truth is
+read from a ``ground_truth.csv`` (Section 8 schema) if one is found next to the
+dataset; otherwise the true distance is parsed from the filename
+(``..._50cm`` or ``..._d050_...``) and the lighting from the folder / filename.
+
+Ground truth is **optional**. Without it the pipeline still sizes every image and
+just prints the model outputs (Z / W / H) instead of a comparison - it never
+errors. Pass ``--no-eval`` to skip the evaluation deliberately and only print the
+predictions. Note the cup anchors are NOT ground truth: they are the fixed
+calibration constant that turns relative depth into meters, always needed for a
+metric result (``--distance`` or ``--object-height`` work too, when there are no
+cups in the shot).
+
 Usage
 -----
     python test_pipeline.py --image photo.jpg --target bottle --distance 0.5
-    python test_pipeline.py --image photo.jpg --target bottle \
+    python test_pipeline.py --image photo.jpg --target bottle \\
         --anchor 1900,1500,0.5 --anchor 3400,1500,1.2 --fx 3200
     python test_pipeline.py --image photo.jpg --target bottle --object-height 0.20
-    python test_pipeline.py --image photo.jpg --target bottle --depth-model midas \
+    python test_pipeline.py --image photo.jpg --target bottle --depth-model midas \\
         --object-height 0.20
+
+    # whole-dataset batch, three depth models, auto anchors + auto eval:
+    python test_pipeline.py --dataset dataset --depth-model all --calib inverse
+    python test_pipeline.py --dataset dataset/white --depth-model large --conf 0.2
 
 If ``--image`` is omitted a synthetic image is generated so the script also
 doubles as an environment/dependency smoke test (a calibration flag is still
@@ -63,6 +105,8 @@ import argparse
 import csv
 import json
 import math
+import os
+import re
 import sys
 import time
 from pathlib import Path
@@ -93,6 +137,13 @@ DEFAULT_DEPTH_MODEL = MODELS["small"]
 DEFAULT_YOLO = "yolov8n.pt"
 _SCRIPT_DIR = Path(__file__).resolve().parent
 
+# ``--depth-model all`` runs these three (in this order) over the whole dataset.
+BATCH_DEPTH_MODELS = ("small", "base", "large")
+
+# Extensions and lighting tokens recognised while scanning a dataset folder.
+IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tif", ".tiff"}
+LIGHTING_TOKENS = ("white", "warm", "dim", "nv")
+
 # EXIF tag ids used for the focal-length shortcut.
 _EXIF_FOCAL_35MM = 41989  # FocalLengthIn35mmFilm
 _FULLFRAME_WIDTH_MM = 36.0
@@ -114,15 +165,22 @@ _MAGMA = np.array(
 )
 
 
+class PipelineSkip(Exception):
+    """Raised when one image cannot be sized; batch mode logs it and moves on."""
+
+
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("--image", type=Path, default=None, help="Input image (synthetic if omitted).")
+    parser.add_argument("--dataset", type=Path, default=None, metavar="DIR",
+                        help="Batch mode: scan DIR recursively, run every image, write an evaluation.")
     parser.add_argument("--target", default=None, help="COCO class to size, e.g. bottle (default: all detections).")
     parser.add_argument("--depth-model", default=DEFAULT_DEPTH_MODEL,
-                        help="small/base/large (Depth Anything V2, default) | midas | midas-small | a HF id.")
+                        help="small/base/large (Depth Anything V2, default) | midas | midas-small | "
+                             "'all' (batch: run small+base+large) | a HF id.")
     parser.add_argument("--yolo", default=DEFAULT_YOLO, help=f"Ultralytics weights (default: {DEFAULT_YOLO}).")
     parser.add_argument("--conf", type=float, default=0.25, help="Detection confidence threshold (default: 0.25).")
     parser.add_argument("--imgsz", type=int, default=640, help="YOLO inference image size (default: 640).")
@@ -132,6 +190,8 @@ def parse_args(argv=None):
                        help="Measured camera-to-object distance (m) of the most confident target (beta=0).")
     calib.add_argument("--anchor", action="append", default=[], metavar="U,V,DIST",
                        help="Ground-truth anchor 'u,v,distance_m'. Repeat >=2 times for an affine fit.")
+    calib.add_argument("--anchor-file", type=Path, default=None, metavar="PATH",
+                       help="Read anchors from an anchor.txt ('cup1 anchor (636, 663, 40cm)').")
     calib.add_argument("--object-height", type=float, default=None, metavar="M",
                        help="Known real height (m) of the --target class; distance from box height + focal length.")
     calib.add_argument("--calib", choices=["affine", "inverse"], default="affine",
@@ -150,10 +210,116 @@ def parse_args(argv=None):
                         help="Do not read the focal length from EXIF metadata.")
     parser.set_defaults(exif=True)
     parser.add_argument("--out", type=Path, default=_SCRIPT_DIR / "outputs", help="Output directory.")
+    parser.add_argument("--no-eval", dest="no_eval", action="store_true",
+                        help="Batch mode: just print the model predictions and skip the ground-truth "
+                             "evaluation entirely (no ground truth needed, no eval CSVs written).")
     parser.add_argument("--size", type=int, default=512, help="Synthetic image side when --image is omitted.")
     return parser.parse_args(argv)
 
 
+# --------------------------------------------------------------------------- #
+# dataset / anchor / ground-truth helpers                                      #
+# --------------------------------------------------------------------------- #
+def parse_anchor_file(path):
+    """Parse an anchor file into ``['u,v,dist_m', ...]``.
+
+    Accepts lines like ``cup1 anchor (636, 663, 40cm)`` (distance in ``cm`` or
+    ``m``); blank lines and ``#`` comments are ignored.
+    """
+    path = Path(path)
+    if not path.is_file():
+        sys.exit(f"Anchor file not found: {path}")
+    anchors = []
+    for line in path.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        m = re.search(r"\(\s*([-\d.]+)\s*,\s*([-\d.]+)\s*,\s*([-\d.]+)\s*(cm|m)?\s*\)", line, re.I)
+        if not m:
+            continue
+        u, v, dist = m.group(1), m.group(2), float(m.group(3))
+        if (m.group(4) or "cm").lower() == "cm":
+            dist /= 100.0
+        anchors.append(f"{u},{v},{dist:g}")
+    if not anchors:
+        sys.exit(f"No anchors parsed from {path}; expected 'name anchor (u, v, 40cm)' lines.")
+    return anchors
+
+
+def discover_anchor_file(dataset_root):
+    """Look for an ``anchor.txt`` next to the dataset root (or its parent)."""
+    root = Path(dataset_root)
+    for cand in (root / "anchor.txt", root.parent / "anchor.txt"):
+        if cand.is_file():
+            return cand
+    return None
+
+
+def find_images(root):
+    """Every image under ``root`` (recursive), sorted for deterministic runs."""
+    root = Path(root)
+    if not root.is_dir():
+        sys.exit(f"--dataset is not a directory: {root}")
+    return sorted(p for p in root.rglob("*") if p.is_file() and p.suffix.lower() in IMAGE_EXTS)
+
+
+def derive_truth(image_path, dataset_root=None):
+    """Best-effort ``(distance_m, lighting)`` from the path/filename.
+
+    Distance: ``..._50cm`` or ``..._d050_...``. Lighting: a ``white|warm|dim|nv``
+    folder or filename token. Both may be ``None`` (then that metric is skipped).
+    """
+    name = Path(image_path).name.lower()
+    distance = None
+    m = re.search(r"(\d{2,3})\s*cm", name)
+    if m:
+        distance = int(m.group(1)) / 100.0
+    else:
+        m = re.search(r"_d(\d{3})_", name)
+        if m:
+            distance = int(m.group(1)) / 100.0
+
+    lighting = None
+    parts = [p.lower() for p in Path(image_path).parts]
+    for tok in LIGHTING_TOKENS:
+        if tok in parts:
+            lighting = tok
+            break
+    if lighting is None:
+        for tok in LIGHTING_TOKENS:
+            if re.search(rf"(^|_){tok}($|_)", name):
+                lighting = tok
+                break
+    return distance, lighting
+
+
+def load_ground_truth(dataset_root):
+    """Return ``{filename: row}`` from a ``ground_truth.csv`` near the dataset."""
+    root = Path(dataset_root)
+    for cand in (root / "ground_truth.csv", root.parent / "ground_truth.csv",
+                 _SCRIPT_DIR / "ground_truth.csv"):
+        if not cand.is_file():
+            continue
+        try:
+            with cand.open(newline="") as fh:
+                rows = list(csv.DictReader(fh))
+        except Exception as exc:  # malformed CSV should not kill the run
+            print(f"[warn] could not read {cand}: {exc}")
+            continue
+        table = {}
+        for row in rows:
+            key = (row.get("filename") or "").strip()
+            if key:
+                table[key] = row
+                table[Path(key).stem] = row
+        print(f"[info] ground truth: {len(rows)} rows from {cand}")
+        return table
+    return {}
+
+
+# --------------------------------------------------------------------------- #
+# imaging / depth / detection primitives                                       #
+# --------------------------------------------------------------------------- #
 def make_synthetic_image(size):
     """Deterministic RGB image with a few shapes (env smoke test only)."""
     rng = np.random.default_rng(0)
@@ -224,7 +390,7 @@ def exif_focal_pixels(src_path, width):
     return float(f35) / _FULLFRAME_WIDTH_MM * float(width)
 
 
-def resolve_intrinsics(args, src_path, width, height):
+def resolve_intrinsics(args, src_path, width, height, warn=True):
     """Return ``(fx, fy, cx, cy, source)`` trying CLI -> EXIF -> assumed FOV."""
     if args.fx or args.fy:
         fx = args.fx if args.fx else args.fy
@@ -239,24 +405,36 @@ def resolve_intrinsics(args, src_path, width, height):
             cy = args.cy if args.cy is not None else height / 2.0
             return f, f, cx, cy, "exif"
     fx = 0.5 * width / math.tan(math.radians(args.hfov) / 2.0)
-    print(f"[warn] no --fx and no usable EXIF; assuming a {args.hfov:g} deg horizontal FOV (f={fx:.0f} px).")
+    if warn:
+        print(f"[warn] no --fx and no usable EXIF; assuming a {args.hfov:g} deg horizontal FOV (f={fx:.0f} px).")
     return fx, fx, width / 2.0, height / 2.0, "hfov"
 
 
-def run_depth(image, model_id):
-    """Zero-shot relative depth map (larger = nearer for the '-hf' checkpoints)."""
+def make_depth_pipe(model_id=None):
+    """Build a depth-estimation pipeline once (reused across a whole batch)."""
     device = 0 if torch.cuda.is_available() else -1
-    pipe = pipeline(task="depth-estimation", model=MODELS.get(model_id, model_id), device=device)
+    return pipeline(task="depth-estimation", model=MODELS.get(model_id, model_id), device=device)
+
+
+def run_depth(image, model_id, pipe=None):
+    """Zero-shot relative depth map (larger = nearer for the '-hf' checkpoints)."""
+    if pipe is None:
+        pipe = make_depth_pipe(model_id)
     predicted = pipe(image)["predicted_depth"]
     if hasattr(predicted, "detach"):
         predicted = predicted.detach().cpu().numpy()
     return np.asarray(predicted, dtype=np.float32).squeeze()
 
 
-def run_detections(image, weights, conf, imgsz):
+def make_yolo(weights):
+    return YOLO(weights)
+
+
+def run_detections(image, weights, conf, imgsz, model=None):
     """All YOLO detections as dicts sorted by descending confidence."""
+    if model is None:
+        model = make_yolo(weights)
     device = 0 if torch.cuda.is_available() else "cpu"
-    model = YOLO(weights)
     result = model.predict(source=image, conf=conf, imgsz=imgsz, device=device, verbose=False)[0]
     detections = []
     for box in result.boxes:
@@ -271,7 +449,7 @@ def run_detections(image, weights, conf, imgsz):
     return detections
 
 
-def fit_calibration(args, depth):
+def fit_calibration(args, depth, anchors=None):
     """Return ``(alpha, beta, model, description)`` for the depth->distance model.
 
     ``model == 'affine'``  -> ``Z = alpha * D + beta`` (the proposal's linear form).
@@ -280,15 +458,16 @@ def fit_calibration(args, depth):
     monocular depth models and interpolates far better between anchors.
     """
     model = args.calib
-    if args.anchor:
+    anchors = args.anchor if anchors is None else anchors
+    if anchors:
         points = []
-        for spec in args.anchor:
+        for spec in anchors:
             parts = spec.split(",")
             if len(parts) != 3:
-                sys.exit(f"--anchor expects 'u,v,distance_m', got '{spec}'")
+                sys.exit(f"anchor expects 'u,v,distance_m', got '{spec}'")
             u, v, dist = (float(p) for p in parts)
             if dist <= 0:
-                sys.exit(f"--anchor distance must be positive meters, got '{spec}'")
+                sys.exit(f"anchor distance must be positive meters, got '{spec}'")
             points.append((sample_depth(depth, u, v), dist))
         depths = [p[0] for p in points]
         distances = [p[1] for p in points]
@@ -297,7 +476,7 @@ def fit_calibration(args, depth):
             alpha, beta = np.polyfit(depths, targets, 1)
             return float(alpha), float(beta), model, f"{model} fit on {len(points)} anchors"
         if depths[0] == 0:
-            sys.exit("Anchor depth is 0; pick a different --anchor pixel.")
+            sys.exit("Anchor depth is 0; pick a different anchor pixel.")
         return targets[0] / depths[0], 0.0, model, f"{model} scale fit on 1 anchor (beta=0)"
     if args.distance is not None:
         return None, None, model, "--distance (applied to the primary target)"
@@ -344,56 +523,69 @@ def write_results(out_dir, stem, meta, results):
     return json_path, csv_path
 
 
-def main(argv=None):
-    args = parse_args(argv)
-    if args.object_height is None and args.distance is None and not args.anchor:
-        sys.exit("No calibration: pass --anchor u,v,distance_m (>=2), --distance <m>, or --object-height <m>.")
+def save_outputs(out_dir, stem, image, depth, results, meta):
+    """Write the annotated overlay, depth visualizations and results files."""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    lo, hi = float(depth.min()), float(depth.max())
+    norm = (depth - lo) / (hi - lo) if hi > lo else np.zeros_like(depth)
+    Image.fromarray(to_uint8(norm), "L").save(out_dir / f"{stem}_depth_gray.png")
+    Image.fromarray(apply_colormap(norm), "RGB").save(out_dir / f"{stem}_depth_color.png")
+    annotate(image, results).save(out_dir / f"{stem}_pipeline.png")
+    return write_results(out_dir, stem, meta, results)
 
-    image, src_path = load_image(args.image, args.size)
-    args.out.mkdir(parents=True, exist_ok=True)
-    if src_path is None:
-        print("[warn] --image not given; using a synthetic image (smoke test only).")
-        src_path = args.out / "synthetic_input.png"
-        image.save(src_path)
 
-    stem = Path(src_path).stem
-    fx, fy, cx, cy, intrinsic_src = resolve_intrinsics(args, src_path, image.width, image.height)
-    print(f"[info] image     : {src_path}  ({image.width}x{image.height})")
-    print(f"[info] camera    : fx={fx:.1f} fy={fy:.1f} cx={cx:.1f} cy={cy:.1f} (from {intrinsic_src})")
+# --------------------------------------------------------------------------- #
+# core per-image sizing                                                        #
+# --------------------------------------------------------------------------- #
+def size_image(args, image, src_path, model_key, pipe=None, yolo_model=None, anchors=None, quiet=False):
+    """Run depth -> YOLO -> calibration -> metric sizing on one image.
+
+    Returns a dict with ``meta`` / ``results`` / ``depth``. Raises PipelineSkip
+    when the image cannot be sized (no detection, no target, all Z <= 0) so a
+    batch can log it and carry on.
+    """
+    anchors = args.anchor if anchors is None else anchors
+    fx, fy, cx, cy, intrinsic_src = resolve_intrinsics(args, src_path, image.width, image.height, warn=not quiet)
+    if not quiet:
+        print(f"[info] image     : {src_path}  ({image.width}x{image.height})")
+        print(f"[info] camera    : fx={fx:.1f} fy={fy:.1f} cx={cx:.1f} cy={cy:.1f} (from {intrinsic_src})")
 
     t0 = time.perf_counter()
-    depth = run_depth(image, args.depth_model)
-    print(f"[info] depth     : {depth.shape} in {time.perf_counter() - t0:.2f}s "
-          f"range=[{depth.min():.3f}, {depth.max():.3f}]")
+    depth = run_depth(image, model_key, pipe)
+    if not quiet:
+        print(f"[info] depth     : {depth.shape} in {time.perf_counter() - t0:.2f}s "
+              f"range=[{depth.min():.3f}, {depth.max():.3f}]")
 
-    detections = run_detections(image, args.yolo, args.conf, args.imgsz)
+    detections = run_detections(image, args.yolo, args.conf, args.imgsz, yolo_model)
     if not detections:
-        sys.exit("No objects detected; try a lower --conf or a different image.")
+        raise PipelineSkip("no objects detected (try a lower --conf)")
     targets = detections
     if args.target:
         targets = [d for d in detections if d["label"].lower() == args.target.lower()]
         if not targets:
             found = ", ".join(sorted({d["label"] for d in detections}))
-            sys.exit(f"No '{args.target}' detected. Detected: {found}")
-    print(f"[info] detection : {len(detections)} total, {len(targets)} to size"
-          + (f" (target='{args.target}')" if args.target else ""))
+            raise PipelineSkip(f"no '{args.target}' detected (found: {found})")
+    if not quiet:
+        print(f"[info] detection : {len(detections)} total, {len(targets)} to size"
+              + (f" (target='{args.target}')" if args.target else ""))
 
     # Metric calibration: depth affine, or per-object known-size geometry.
     alpha = beta = None
     model = args.calib
     how = "object-height (box height + focal length)"
     if args.object_height is None:
-        alpha, beta, model, how = fit_calibration(args, depth)
+        alpha, beta, model, how = fit_calibration(args, depth, anchors)
         if alpha is None:  # --distance: anchor on the most confident target's own depth
             primary = targets[0]
             primary_depth = object_depth(depth, primary["box"], args.depth_sample)
             if primary_depth == 0:
-                sys.exit("Primary target depth is 0; try a different --depth-sample.")
+                raise PipelineSkip("primary target depth is 0 (try a different --depth-sample)")
             target = 1.0 / args.distance if model == "inverse" else args.distance
             alpha, beta = target / primary_depth, 0.0
             how = f"--distance on '{primary['label']}' (beta=0)"
-        print(f"[info] calibration: {model} alpha={alpha:.4f} beta={beta:.4f} ({how})")
-    else:
+        if not quiet:
+            print(f"[info] calibration: {model} alpha={alpha:.4f} beta={beta:.4f} ({how})")
+    elif not quiet:
         print(f"[info] calibration: object-height={args.object_height} m ({how})")
 
     results = []
@@ -421,37 +613,341 @@ def main(argv=None):
                 "depth": rel, "z_m": z, "w_m": w, "h_m": h, "area_m2": w * h,
             }
         )
-
     if not results:
-        sys.exit("No objects could be sized (all had non-positive Z); check the calibration.")
-
-    print(f"\n{'label':<12}{'conf':>6}{'depth':>9}{'Z(m)':>9}{'W(cm)':>9}{'H(cm)':>9}{'area(cm^2)':>12}")
-    for r in results:
-        print(f"{r['label']:<12}{r['conf']:>6.2f}{r['depth']:>9.3f}{r['z_m']:>9.3f}"
-              f"{r['w_m'] * 100:>9.1f}{r['h_m'] * 100:>9.1f}{r['area_m2'] * 1e4:>12.1f}")
-
-    lo, hi = float(depth.min()), float(depth.max())
-    norm = (depth - lo) / (hi - lo) if hi > lo else np.zeros_like(depth)
-    Image.fromarray(to_uint8(norm), "L").save(args.out / f"{stem}_depth_gray.png")
-    Image.fromarray(apply_colormap(norm), "RGB").save(args.out / f"{stem}_depth_color.png")
-    annotate(image, results).save(args.out / f"{stem}_pipeline.png")
+        raise PipelineSkip("no objects could be sized (all had non-positive Z)")
 
     meta = {
         "image": str(src_path),
         "width": image.width, "height": image.height,
         "fx": fx, "fy": fy, "cx": cx, "cy": cy, "intrinsics": intrinsic_src,
-        "depth_model": MODELS.get(args.depth_model, args.depth_model),
+        "depth_model": MODELS.get(model_key, model_key),
         "yolo": args.yolo,
         "calibration": {"mode": how, "model": model, "alpha": alpha, "beta": beta,
                         "object_height_m": args.object_height, "distance_m": args.distance,
-                        "anchors": args.anchor},
+                        "anchors": list(anchors)},
     }
-    json_path, csv_path = write_results(args.out, stem, meta, results)
-    print(f"\n[info] wrote     : {args.out / f'{stem}_pipeline.png'}")
-    print(f"[info] wrote     : {args.out / f'{stem}_depth_color.png'}")
-    print(f"[info] wrote     : {json_path}")
-    print(f"[info] wrote     : {csv_path}")
+    return {"meta": meta, "results": results, "depth": depth}
+
+
+def print_results_table(results):
+    print(f"\n{'label':<12}{'conf':>6}{'depth':>9}{'Z(m)':>9}{'W(cm)':>9}{'H(cm)':>9}{'area(cm^2)':>12}")
+    for r in results:
+        print(f"{r['label']:<12}{r['conf']:>6.2f}{r['depth']:>9.3f}{r['z_m']:>9.3f}"
+              f"{r['w_m'] * 100:>9.1f}{r['h_m'] * 100:>9.1f}{r['area_m2'] * 1e4:>12.1f}")
+
+
+def pick_middle(results, anchors):
+    """The detection whose box centre sits between the two anchor pixels.
+
+    This is the object the dataset evaluates (``ImageCollection.md``: the middle
+    object always sits between cup1 and cup2). Falls back to the most confident
+    detection when there is no usable anchor pair or nothing sits between them.
+    """
+    if not results:
+        return None
+    us = []
+    for spec in anchors or []:
+        try:
+            us.append(float(spec.split(",")[0]))
+        except (ValueError, IndexError):
+            continue
+    if len(us) >= 2:
+        lo, hi = min(us), max(us)
+        inside = [r for r in results if lo <= (r["x1"] + r["x2"]) / 2.0 <= hi]
+        if inside:
+            return max(inside, key=lambda r: r["conf"])
+    return max(results, key=lambda r: r["conf"])
+
+
+# --------------------------------------------------------------------------- #
+# evaluation                                                                   #
+# --------------------------------------------------------------------------- #
+def eval_row(model, image_path, group, true_distance, lighting, picked, ground_truth):
+    """One evaluation row for the picked (middle) object of one image."""
+    row = {
+        "model": model,
+        "filename": Path(image_path).name,
+        "group": group,
+        "lighting": lighting,
+        "distance_true_m": true_distance,
+        "label": picked["label"] if picked else "",
+        "conf": picked["conf"] if picked else None,
+        "z_m": picked["z_m"] if picked else None,
+        "w_m": picked["w_m"] if picked else None,
+        "h_m": picked["h_m"] if picked else None,
+        "true_w_m": None,
+        "true_h_m": None,
+    }
+    gt = ground_truth.get(Path(image_path).name) or ground_truth.get(Path(image_path).stem)
+    if gt:
+        try:
+            if gt.get("distance_m"):
+                row["distance_true_m"] = float(gt["distance_m"])
+        except ValueError:
+            pass
+        if gt.get("lighting"):
+            row["lighting"] = gt["lighting"]
+        for key in ("true_w_m", "true_h_m"):
+            try:
+                if gt.get(key):
+                    row[key] = float(gt[key])
+            except ValueError:
+                pass
+
+    for name, pred_key, true_key, scale in (
+        ("z", "z_m", "distance_true_m", 100.0),
+        ("w", "w_m", "true_w_m", 100.0),
+        ("h", "h_m", "true_h_m", 100.0),
+    ):
+        pred = row[pred_key]
+        true = row[true_key]
+        err = rel = None
+        if pred is not None and true:
+            err = (pred - true) * scale
+            rel = (pred - true) / true * 100.0
+        row[f"{name}_err_cm"] = err
+        row[f"{name}_abs_err_cm"] = abs(err) if err is not None else None
+        row[f"{name}_rel_err_pct"] = rel
+    return row
+
+
+def _agg(rows):
+    """``(n, mae_z_cm, rmse_z_cm, mae_rel_pct)`` over rows that have a Z error."""
+    zs = [r["z_abs_err_cm"] for r in rows if r["z_abs_err_cm"] is not None]
+    if not zs:
+        return None
+    mae = sum(zs) / len(zs)
+    rmse = math.sqrt(sum(x * x for x in zs) / len(zs))
+    rels = [abs(r["z_rel_err_pct"]) for r in rows if r["z_rel_err_pct"] is not None]
+    return len(zs), mae, rmse, (sum(rels) / len(rels) if rels else None)
+
+
+def has_truth(rows):
+    """True when any row has a real distance to compare against."""
+    return any(r["z_err_cm"] is not None for r in rows)
+
+
+def print_predictions_table(rows, model_keys):
+    """Plain model-output listing for runs with no ground truth to compare to."""
+    print("\n==================== model output (no ground truth) ====================")
+    print(f"{'model':<8}{'image':<20}{'label':<10}{'Z(cm)':>8}{'W(cm)':>8}{'H(cm)':>8}")
+    for model in model_keys:
+        for r in [x for x in rows if x["model"] == model]:
+            z = "" if r["z_m"] is None else f"{r['z_m'] * 100:.1f}"
+            w = "" if r["w_m"] is None else f"{r['w_m'] * 100:.1f}"
+            h = "" if r["h_m"] is None else f"{r['h_m'] * 100:.1f}"
+            print(f"{model:<8}{r['filename']:<20}{(r['label'] or '-'):<10}{z:>8}{w:>8}{h:>8}")
+    print("========================================================================")
+
+
+def write_eval(out_dir, rows, model_keys):
+    """Write eval CSVs (per-image + grouped summaries) and print a summary table."""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    fields = [
+        "model", "filename", "group", "lighting", "distance_true_m",
+        "label", "conf", "z_m", "z_err_cm", "z_abs_err_cm", "z_rel_err_pct",
+        "w_m", "true_w_m", "w_err_cm", "h_m", "true_h_m", "h_err_cm",
+    ]
+    per_path = out_dir / "eval_per_image.csv"
+    with per_path.open("w", newline="") as fh:
+        writer = csv.DictWriter(fh, fieldnames=fields, extrasaction="ignore")
+        writer.writeheader()
+        for r in rows:
+            writer.writerow({k: r.get(k) for k in fields})
+
+    def group_by(key):
+        out = {}
+        for r in rows:
+            out.setdefault(r[key], []).append(r)
+        return out
+
+    def write_grouped(path, key, header):
+        with path.open("w", newline="") as fh:
+            writer = csv.writer(fh)
+            writer.writerow(["model", key, "n", "mae_z_cm", "rmse_z_cm", "mae_rel_pct"])
+            for model in model_keys:
+                buckets = group_by(key)
+                for bucket in sorted({r[key] for r in rows if r["model"] == model},
+                                     key=lambda x: (x is None, x)):
+                    sub = [r for r in buckets.get(bucket, []) if r["model"] == model]
+                    agg = _agg(sub)
+                    if agg:
+                        n, mae, rmse, rel = agg
+                        writer.writerow([model, bucket, n, f"{mae:.2f}", f"{rmse:.2f}",
+                                         "" if rel is None else f"{rel:.2f}"])
+        print(f"[info] wrote     : {path}")
+
+    summary_path = out_dir / "eval_summary.csv"
+    with summary_path.open("w", newline="") as fh:
+        writer = csv.writer(fh)
+        writer.writerow(["model", "n_sized", "mae_z_cm", "rmse_z_cm", "mae_rel_pct"])
+        for model in model_keys:
+            agg = _agg([r for r in rows if r["model"] == model])
+            if agg:
+                n, mae, rmse, rel = agg
+                writer.writerow([model, n, f"{mae:.2f}", f"{rmse:.2f}",
+                                 "" if rel is None else f"{rel:.2f}"])
+
+    write_grouped(out_dir / "eval_by_lighting.csv", "lighting", "lighting")
+    write_grouped(out_dir / "eval_by_distance.csv", "distance_true_m", "distance_m")
+
+    print("\n==================== evaluation (middle object) ====================")
+    print(f"{'model':<8}{'n':>4}{'MAE Z(cm)':>12}{'RMSE Z(cm)':>12}{'MAE rel(%)':>12}")
+    for model in model_keys:
+        agg = _agg([r for r in rows if r["model"] == model])
+        if agg:
+            n, mae, rmse, rel = agg
+            print(f"{model:<8}{n:>4}{mae:>12.2f}{rmse:>12.2f}"
+                  f"{('' if rel is None else f'{rel:.1f}'):>12}")
+
+    distances = sorted({r["distance_true_m"] for r in rows if r["distance_true_m"]})
+    if distances and len(model_keys) >= 1:
+        print("\nper true distance (Z abs error, cm):")
+        print(f"{'model':<8}" + "".join(f"{d * 100:>8.0f}cm" for d in distances))
+        for model in model_keys:
+            line = f"{model:<8}"
+            for d in distances:
+                sub = [r for r in rows if r["model"] == model and r["distance_true_m"] == d]
+                agg = _agg(sub)
+                line += f"{agg[1]:>10.1f}" if agg else f"{'-':>10}"
+            print(line)
+
+    lightings = [t for t in LIGHTING_TOKENS if any(r["lighting"] == t for r in rows)]
+    if lightings:
+        print("\nper lighting (Z abs error, cm):")
+        print(f"{'model':<8}" + "".join(f"{t:>9}" for t in lightings))
+        for model in model_keys:
+            line = f"{model:<8}"
+            for t in lightings:
+                sub = [r for r in rows if r["model"] == model and r["lighting"] == t]
+                agg = _agg(sub)
+                line += f"{agg[1]:>9.1f}" if agg else f"{'-':>9}"
+            print(line)
+    print("====================================================================")
+    print(f"[info] wrote     : {per_path}")
+    print(f"[info] wrote     : {summary_path}")
+
+
+# --------------------------------------------------------------------------- #
+# entry points                                                                 #
+# --------------------------------------------------------------------------- #
+def run_single(args, model_keys):
+    """Original single-image flow (kept byte-for-byte compatible in behaviour)."""
+    if args.object_height is None and args.distance is None and not args.anchor:
+        sys.exit("No calibration: pass --anchor u,v,distance_m (>=2), --anchor-file, "
+                 "--distance <m>, or --object-height <m>.")
+
+    image, src_path = load_image(args.image, args.size)
+    args.out.mkdir(parents=True, exist_ok=True)
+    if src_path is None:
+        print("[warn] --image not given; using a synthetic image (smoke test only).")
+        src_path = args.out / "synthetic_input.png"
+        image.save(src_path)
+
+    stem = Path(src_path).stem
+    multi = len(model_keys) > 1
+    for model_key in model_keys:
+        try:
+            rec = size_image(args, image, src_path, model_key, anchors=args.anchor)
+        except PipelineSkip as exc:
+            sys.exit(f"[{model_key}] {exc}")
+        print_results_table(rec["results"])
+        out_dir = (args.out / model_key) if multi else args.out
+        json_path, csv_path = save_outputs(out_dir, stem, image, rec["depth"], rec["results"], rec["meta"])
+        print(f"\n[info] wrote     : {out_dir / f'{stem}_pipeline.png'}")
+        print(f"[info] wrote     : {out_dir / f'{stem}_depth_color.png'}")
+        print(f"[info] wrote     : {json_path}")
+        print(f"[info] wrote     : {csv_path}")
     return 0
+
+
+def run_batch(args, model_keys):
+    """Scan a dataset folder, run every image through every model, write an eval."""
+    dataset_root = Path(args.dataset)
+    images = find_images(dataset_root)
+    if not images:
+        sys.exit(f"No images found under {dataset_root}")
+
+    if not args.anchor and args.anchor_file:
+        args.anchor = parse_anchor_file(args.anchor_file)
+    if not args.anchor:
+        cand = discover_anchor_file(dataset_root)
+        if cand:
+            args.anchor = parse_anchor_file(cand)
+            print(f"[info] anchors  : {len(args.anchor)} from {cand} -> {args.anchor}")
+    if args.object_height is None and args.distance is None and not args.anchor:
+        sys.exit("No calibration found: pass --anchor / --anchor-file / --distance / --object-height "
+                 f"(looked for an anchor.txt next to {dataset_root} too).")
+
+    ground_truth = {} if args.no_eval else load_ground_truth(dataset_root)
+    print(f"[info] dataset  : {dataset_root} ({len(images)} images) x models {', '.join(model_keys)}")
+
+    # Build the heavy models ONCE and reuse them across the whole batch.
+    yolo_model = make_yolo(args.yolo)
+    pipes = {}
+    for model_key in model_keys:
+        t0 = time.perf_counter()
+        pipes[model_key] = make_depth_pipe(model_key)
+        print(f"[info] loaded   : depth model '{model_key}' in {time.perf_counter() - t0:.1f}s")
+
+    rows = []
+    skipped = 0
+    for img in images:
+        rel_parent = img.parent.relative_to(dataset_root)
+        group = str(rel_parent).replace(os.sep, "_") or dataset_root.name
+        true_distance, lighting = derive_truth(img, dataset_root)
+        try:
+            image = Image.open(img).convert("RGB")
+        except Exception as exc:
+            print(f"[skip] {img.name}: cannot read ({exc})")
+            skipped += 1
+            continue
+        for model_key in model_keys:
+            out_dir = args.out / model_key / rel_parent
+            try:
+                rec = size_image(args, image, img, model_key, pipes[model_key],
+                                 yolo_model, args.anchor, quiet=True)
+            except PipelineSkip as exc:
+                print(f"[skip] {img.name} [{model_key}]: {exc}")
+                skipped += 1
+                continue
+            save_outputs(out_dir, img.stem, image, rec["depth"], rec["results"], rec["meta"])
+            picked = pick_middle(rec["results"], args.anchor)
+            row = eval_row(model_key, img, group,
+                           None if args.no_eval else true_distance, lighting, picked, ground_truth)
+            rows.append(row)
+            note = ""
+            if row["z_err_cm"] is not None:
+                note = f" (true {row['distance_true_m'] * 100:.0f}cm, err {row['z_err_cm']:+.1f}cm)"
+            print(f"    {img.stem:<16}[{model_key:<5}] {(row['label'] or '-'):<9}"
+                  f"Z={row['z_m'] * 100:6.1f}cm{note}", flush=True)
+
+    if not rows:
+        sys.exit("Nothing could be sized; check the anchors, --conf and the dataset.")
+
+    if args.no_eval or not has_truth(rows):
+        print_predictions_table(rows, model_keys)
+        if args.no_eval:
+            print("[info] --no-eval: predictions only; no evaluation written.")
+        else:
+            print("[info] no ground truth to compare against (no ground_truth.csv and no "
+                  "distance in the filenames); printed predictions only.")
+    else:
+        write_eval(args.out, rows, model_keys)
+    print(f"\n[info] sized    : {len(rows)} (model, image) pairs; skipped {skipped}")
+    return 0
+
+
+def main(argv=None):
+    args = parse_args(argv)
+    model_keys = list(BATCH_DEPTH_MODELS) if args.depth_model == "all" else [args.depth_model]
+    # --anchor-file applies to both single and batch mode; resolve it up front.
+    if not args.anchor and args.anchor_file:
+        args.anchor = parse_anchor_file(args.anchor_file)
+        print(f"[info] anchors  : {len(args.anchor)} from {args.anchor_file} -> {args.anchor}")
+    if args.dataset is not None:
+        return run_batch(args, model_keys)
+    return run_single(args, model_keys)
 
 
 if __name__ == "__main__":
