@@ -74,22 +74,44 @@ python test_pipeline.py --image photo.jpg --target bottle --calib inverse \
 python test_pipeline.py --image photo.jpg --target bottle --depth-model midas \
     --object-height 0.20                                # MiDaS control baseline
 
-# Batch mode: scan a dataset folder, auto-read anchor.txt, run every image,
-# write an evaluation.  --depth-model all = small + base + large.
+# Batch mode: scan a dataset folder, auto-read each folder's anchor.txt, run
+# every image, write an evaluation.  --depth-model all = small + base + large.
 python test_pipeline.py --dataset dataset --depth-model all --calib inverse
 python test_pipeline.py --dataset dataset/white --depth-model large --conf 0.2
+
+# Anchors: click them instead of reading pixels off in Paint
+python pick_anchors.py                          # per-folder anchor.txt writer
+python pick_anchors.py --overwrite --match '*/b1'
+python label_anchors.py                         # draw them back onto the images
 ```
 
-Batch mode (`--dataset <root>`) walks the folder recursively, finds the anchors
-from `--anchor` / `--anchor-file` / an `anchor.txt` next to the dataset, runs
-each image through every requested model (reusing each model across the batch),
-and writes the results under `<out>/<model>/<relative path>/` plus four eval
-files at the top of `<out>`: `eval_per_image.csv`, `eval_summary.csv`,
-`eval_by_lighting.csv`, `eval_by_distance.csv`. The evaluation is computed on the
+Anchors live **per object folder**: `dataset/<lighting>/<object>/anchor.txt`, and
+there is no inheritance - an image only ever uses the `anchor.txt` sitting in its
+own folder. `pick_anchors.py` writes them: it walks the folders that contain
+images, serves one reference frame per folder to a local browser page, and turns
+two clicks into `cup1 anchor (636, 663, 40cm)` / `cup2 anchor (1097, 605, 100cm)`
+lines. Wheel-zoom for pixel accuracy, `--names` / `--dist-cm` for other anchors,
+`--overwrite` to redo folders that already have the file, `--preview` to run
+`label_anchors.py` afterwards. It is the inverse of `label_anchors.py`, which
+reads the same file and draws the markers back onto every image. Batch mode
+(`--dataset <root>`) walks the folder recursively, checks
+each object folder for that file, and a folder without one is **skipped as a
+whole** and reported once with a reminder to add it (a half-shot dataset still
+runs instead of dying). It then runs each image through every requested model
+(reusing each model across the batch) and writes the results under
+`<out>/<model>/<relative path>/` plus eval files at the top of `<out>`:
+`eval_per_image.csv`, `eval_summary.csv`, `eval_by_lighting.csv`,
+`eval_by_distance.csv`, `eval_by_object.csv`. `--anchor` / `--anchor-file` force
+one calibration on every image and `--distance` / `--object-height` calibrate
+without anchors at all, so those flags bypass the per-folder requirement.
+The evaluation is computed on the
 **middle object** (the detection whose box centre lies between the two anchor
 pixels), with MAE / RMSE of Z in cm and the relative %; ground truth comes from a
 `ground_truth.csv` (Section 8 schema) if one sits next to the dataset, otherwise
 from the filename (`..._50cm` / `..._d050_...`) and the lighting folder/token.
+Each image's `_results.json` meta records `calibration.anchor_file`, and
+`eval_per_image.csv` has an `anchor_file` column, so a per-folder calibration is
+always traceable.
 
 Ground truth is **optional** - without it the batch still sizes every image and
 prints the model outputs (Z / W / H); it never errors. `--no-eval` skips the

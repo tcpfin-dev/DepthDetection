@@ -1,0 +1,2 @@
+cup1 anchor (713, 653, 40cm)
+cup2 anchor (1151, 590, 100cm)

@@ -5,11 +5,12 @@ Field guide for the **100-image custom dataset** required by
 (`test_pipeline.py`) is already built; what is missing is the dataset + the
 physical ground truth it is evaluated against.
 
-Goal: 100 camera photos of **one object class (bottle)** spanning different
+Goal: 100 camera photos of **five objects across three classes** - three bottles
+(clear, blue, opaque), one opaque cup and one opaque bowl - spanning different
 **sizes/colors**, **distances**, and **lighting conditions**, with the true
 camera-to-object distance and real dimensions tape-measured for every shot.
 
-All 100 are **real captures, no augmentation**: 5 bottles x 5 middle distances x
+All 100 are **real captures, no augmentation**: 5 objects x 5 middle distances x
 4 lighting modes = 100 distinct smartphone photos. `Research_Proposals.md` asks
 for 100 photographs taken with a phone, measured by hand per shot, so derived
 (cropped / filtered) images cannot stand in for them; Section 11 records the
@@ -31,8 +32,10 @@ Everything the paper evaluates (Z error, W/H error, RMSE/MAE by distance and by
 lighting) is computed on that middle object, which always sits *between* the two
 anchors so the calibration interpolates instead of extrapolates.
 
-Anchor constants for the current rig (1920x1080, fixed camera) are recorded in
-`anchor.txt`; see Section 5 for the session setup that fixes them.
+Anchors live **per object folder** (`dataset/<lighting>/<object>/anchor.txt`) and
+are **required**: each object folder must contain one, an image never inherits an
+anchor.txt from a parent folder, and the pipeline / `label_anchors.py` skip a
+folder that has none (warning once, listing the folders) instead of guessing.
 
 ---
 
@@ -43,55 +46,75 @@ Anchor constants for the current rig (1920x1080, fixed camera) are recorded in
 - Tripod or a fixed rest so camera height and orientation never change.
 - Floor tape or marks to fix the distance positions.
 - **Two anchor cups** (any two easy-to-see cups) - permanently on the 0.40 m and
-  1.00 m marks for the whole session.
+  1.00 m marks for the whole session. Keep these separate from the **c01** cup,
+  which is a measured object that moves to the middle marks.
+- The 5 objects: 3 bottles (clear, blue, opaque), 1 opaque cup (c01), 1 opaque bowl (bwl01).
 - Paper/notebook or a laptop to log ground truth **as you shoot**.
 
 ---
 
 ## 2. The capture matrix (100 images)
 
-One image = one `(bottle, middle distance, lighting)` combination. The two
+One image = one `(object, middle distance, lighting)` combination. The two
 anchors are constant, so they are not an axis.
 
 | Axis | Levels | Count |
 |---|---|---|
-| Bottles (varied size/color) | b01 ... b05 | 5 |
+| Objects (3 bottles + 1 cup + 1 bowl) | b01, b02, b03, c01, bwl01 | 5 |
 | Middle-object distance | 0.50, 0.60, 0.70, 0.80, 0.90 m | 5 |
 | Lighting (real, 4 modes) | white, warm, dim, nv | 4 |
 
 **5 x 5 x 4 = 100.**
 
-Keep the class fixed (bottle) so the evaluation is controlled. Middle distance
-and lighting are the variables the paper reports against; the anchors are the
-constant calibration reference.
+The object set is deliberately mixed: the three bottles keep the class-level
+control the earlier plan had, while the cup and the bowl add a different
+geometry (short and wide, curved rim, big planar top) that stresses the W/H
+back-projection on non-bottle shapes. Middle distance and lighting are the
+variables the paper reports against; because the objects now differ in class,
+report Z/W/H error **per object** as well as overall - the batch run writes
+`eval_by_object.csv` for exactly that.
 
 ---
 
-## 3. Object selection (the 5 bottles)
+## 3. Object selection (the 5 objects)
 
-The set is fixed at **5 bottles**; the 4 lighting modes make up the rest of the
-100. Inspect the bottles first and give each a role so the set varies
-**deliberately**, because the novelty claim is *low-contrast* scenes:
+The set is fixed at **5 objects** (three bottles, one cup, one bowl); the 4
+lighting modes make up the rest of the 100. Inspect them first and give each a
+role so the set varies **deliberately**, because the novelty claim is
+*low-contrast* scenes:
 
-| id | bottle | role / why it is in the set |
-|---|---|---|
-| b01 | plastic bottle, brand A | clear / transparent - hardest contrast case |
-| b02 | plastic bottle, brand B | dark-coloured plastic |
-| b03 | plastic bottle, brand C | light / white plastic |
-| b04 | opaque bottle | normal opaque (easy control) |
-| b05 | translucent bottle | partly see-through / glossy |
+| id | object | label | role / why it is in the set |
+|---|---|---|---|
+| b01 | normal plastic bottle | `bottle` | clear / transparent bottle - hardest contrast case |
+| b02 | blue plastic bottle | `bottle` | dark, saturated plastic - colour/contrast change on a bottle |
+| b03 | opaque bottle | `bottle` | normal opaque bottle (easy bottle control) |
+| c01 | opaque cup | `cup` | new class: short, curved, visible interior - different aspect ratio |
+| bwl01 | opaque bowl | `bowl` | new class: wide, low, large planar top - hardest W/H case |
 
-Fill in each bottle's real colour and character once you have it in hand; the
-point is that the five differ (contrast, transparency, size), not that they match
-the labels exactly. If two of the branded bottles turn out too similar, note it
-in `notes` so the eval can flag the duplication.
+`label` is the controlled class recorded in the ground truth (`bottle`, `cup`,
+`bowl`); all three are real COCO classes, so YOLO can name them.
 
-Measure each bottle **once**, before shooting:
+**The c01 cup is NOT one of the two anchor cups.** The anchors stay taped on the
+0.40 m / 1.00 m marks for the whole session; c01 is a separate cup that is placed
+on the middle marks (0.50 ... 0.90 m) exactly like the bottles and the bowl.
+
+Fill in each object's real colour and character once you have it in hand; the
+point is that the five differ (class, contrast, transparency, size), not that
+they match the labels exactly. If two of the bottles turn out too similar, note
+it in `notes` so the eval can flag the duplication.
+
+Measure each object **once**, before shooting:
 
 - Real width `W` (m)
 - Real height `H` (m)
 
-Re-use those numbers for every shot of that bottle. Do **not** re-measure per
+- **bottle / cup**: `W` = body width at mid-height (ignore a handle), `H` =
+  base-to-rim / base-to-cap height.
+- **bowl**: `W` = outer diameter (widest visible span), `H` = base-to-rim
+  height. The bowl's top opening is much wider than a bottle's, so `W` will be
+  the largest in the set - that is the point of including it.
+
+Re-use those numbers for every shot of that object. Do **not** re-measure per
 image.
 
 ---
@@ -133,9 +156,10 @@ camera app, not the illumination:
 
 IR light itself only affects focus and brightness, not pixel positions. So: note
 the resolution each mode writes, confirm the framing once per mode (Section 5
-step 7), and if only the resolution changed, rescale the anchors instead of
-re-measuring them. Pinning lens, resolution and "no digital zoom" in the camera
-settings keeps a single `anchor.txt` valid for all 100 images.
+step 7), and if only the resolution changed, rescale that folder's anchors
+instead of re-measuring them. Anchors are stored per shot folder
+(`dataset/<lighting>/<object>/anchor.txt`), so a mode that shifts pixels only
+needs ITS folder's file edited - the other folders keep their own anchors.
 
 Keep exposure / white balance on **auto** and lock nothing, but do not
 post-process the originals; the depth model should see the real photo.
@@ -166,7 +190,9 @@ cup1 (0.40 m mark): pixel (u, v) = (     ,     )
 cup2 (1.00 m mark): pixel (u, v) = (     ,     )
 ```
 
-6. Write those two lines into `anchor.txt` and re-use them for all 100 images:
+6. Write those two lines into that folder's `anchor.txt`
+   (`dataset/<lighting>/<object>/anchor.txt`) - every shot folder carries its
+   own copy, so a re-shot scene never inherits another scene's pixels:
 
 ```text
 cup1 anchor (569, 721, 40cm)
@@ -174,11 +200,14 @@ cup2 anchor (1270, 577, 100cm)
 ```
 
 7. Verify the rig by running the pipeline once (Section 10) and confirming the
-   two cups come back at 0.40 m and 1.00 m. If they do not, the anchor pixels
-   are in the wrong place - fix them now, before shooting 100 images. Repeat the
-   check once per lighting mode (Section 4): a mode that uses a different lens,
-   an in-app crop, or a different output resolution shifts the anchor pixels out
-   from under `anchor.txt`, so catch it here, not after 100 shots.
+   two cups come back at 0.40 m and 1.00 m. If they do not, that folder's anchor
+   pixels are in the wrong place - fix them now, before shooting the rest of the
+   folder. `python label_anchors.py` renders the anchors into
+   `anchordataset/<same path>/` so you can see where they actually land. Repeat
+   the check once per lighting mode (Section 4): a mode that uses a different
+   lens, an in-app crop, or a different output resolution shifts the anchor
+   pixels out from under that folder's `anchor.txt`, so catch it here, not after
+   100 shots.
 
 Only the **middle object** moves for the rest of the session; measure its
 distance from the camera lens, tape-taut, at each mark.
@@ -190,14 +219,17 @@ distance from the camera lens, tape-taut, at each mark.
 For every image capture these (this is what RMSE/MAE are computed against):
 
 - `filename`
-- `bottle_id` (b01 ... b05)
-- `label` (bottle)
+- `object_id` (b01 | b02 | b03 | c01 | bwl01)
+- `label` (bottle | cup | bowl - the controlled class of the middle object)
 - `distance_m` (tape-measured camera -> **middle object**)
 - `true_w_m`, `true_h_m` (from Section 3)
 - `lighting` (white | warm | dim | nv)
 
-The two anchors are **not** logged per row - they are constants of the session
-and live in `anchor.txt` / the `notes`, so the CSV stays one row per image.
+The two anchors are **not** logged per row - they are constants of one shot
+folder and live in that folder's `anchor.txt` / the `notes`, so the CSV stays one
+row per image. The pipeline stamps `calibration.anchor_file` into every
+`_results.json` and logs an `anchor_file` column in `eval_per_image.csv`, so a
+row always points back at the file that calibrated it.
 
 ---
 
@@ -207,11 +239,17 @@ Use a systematic name so the log and the pipeline outputs line up:
 
 ```
 bottle01_d050_white.jpg      # b01, 0.5 m, cool/fluorescent
-bottle01_d080_warm.jpg       # b01, 0.8 m, warm light
-bottle05_d090_nv.jpg         # b05, 0.9 m, lights off (night vision)
+bottle02_d080_warm.jpg       # b02, 0.8 m, warm light
+cup01_d090_nv.jpg            # c01, 0.9 m, lights off (night vision)
+bowl01_d070_dim.jpg          # bwl01, 0.7 m, dim light
 ```
 
-Pattern: `bottle<ID>_d<distance_cm>_<lighting>.jpg`
+Pattern: `<object><ID>_d<distance_cm>_<lighting>.jpg`
+
+`<object>` is `bottle`, `cup` or `bowl` and `<ID>` is that object's 2-digit
+number, so `b01` -> `bottle01`, `c01` -> `cup01`, `bwl01` -> `bowl01`. The
+prefix is also what the batch eval falls back to for `object_id` when the
+`ground_truth.csv` column is empty.
 
 Distances in cm, zero-padded to 3 digits (`050`, `060`, `070`, `080`, `090`),
 and `<lighting>` is one of `white`, `warm`, `dim`, `nv`.
@@ -228,12 +266,17 @@ Join on `filename`, then match the pipeline row whose box sits in the middle
 (between the two anchor pixels) - that is the row being evaluated.
 
 ```csv
-filename,bottle_id,label,distance_m,true_w_m,true_h_m,true_volume_ml,lighting,augmented,notes
+filename,object_id,label,distance_m,true_w_m,true_h_m,true_volume_ml,lighting,augmented,notes
 bottle01_d050_white.jpg,b01,bottle,0.50,0.068,0.21,,white,false,
-bottle01_d060_dim.jpg,b01,bottle,0.60,0.068,0.21,,dim,false,
-bottle01_d070_warm.jpg,b01,bottle,0.70,0.068,0.21,,warm,false,
-bottle01_d080_nv.jpg,b01,bottle,0.80,0.068,0.21,,nv,false,
+bottle02_d060_dim.jpg,b02,bottle,0.60,0.062,0.21,,dim,false,
+bottle03_d070_warm.jpg,b03,bottle,0.70,0.070,0.22,,warm,false,
+cup01_d080_nv.jpg,c01,cup,0.80,0.080,0.095,,nv,false,
+bowl01_d090_white.jpg,bwl01,bowl,0.90,0.150,0.060,,white,false,
 ```
+
+`object_id` is the stable key the batch eval groups on (`eval_by_object.csv`).
+If the column is missing or blank the pipeline falls back to the filename prefix
+(`bottle01_d050_white.jpg` -> `bottle01`), so keep the Section 7 pattern.
 
 `augmented` stays `false` for **all 100** rows - every image is a real capture.
 The column is kept only so a derived/filtered image (Section 11) could be
@@ -245,11 +288,11 @@ flagged and reported separately if one were ever added.
 
 1. Confirm the camera has not moved and both cups are on their marks (0.40 /
    1.00 m) and visible.
-2. Place the correct bottle on the target floor mark (0.50 ... 0.90 m),
-   centered, so it does not cover either cup.
+2. Place the correct object (b01 ... bwl01) on the target floor mark (0.50 ...
+   0.90 m), centered, so it does not cover either cup.
 3. Set the lighting mode to the current cell (white | warm | dim | nv); in `nv`
    wait for night vision to settle before shooting.
-4. Confirm the bottle is fully in frame at the fixed camera position.
+4. Confirm the object is fully in frame at the fixed camera position.
 5. Take the shot; keep the original file.
 6. Rename it per the pattern in Section 7.
 7. Log the ground-truth row immediately (Section 8).
@@ -275,13 +318,20 @@ python test_pipeline.py --image bottle01_d050_white.jpg --calib inverse \
 
 Notes for this dataset:
 
-- Use `--conf 0.2`: cans / some bottles only score ~0.24 as COCO `bottle`, so
-  the default 0.25 silently drops the very object being measured. With cans in
-  the mix, `--target bottle` is not reliable; size all detections and pick the
-  middle box, or run `--target` only for plain bottles.
-- COCO has no `can` class, so the middle object may come back as `bottle`,
-  `surfboard`, `fire hydrant`, etc. Record the detector's label in `notes`; the
-  ground-truth `label` stays the controlled class.
+- Use `--conf 0.2`: the cup / bowl and some bottles only score just over 0.2 as
+  their COCO class, so the default 0.25 silently drops the very object being
+  measured. Because the set mixes `bottle`, `cup` and `bowl`, do **not** pin
+  `--target bottle` for the dataset run - size all detections and pick the
+  middle box (`pick_middle` does that automatically in batch mode).
+- COCO has `bottle`, `cup` and `bowl`, so the middle object should normally come
+  back labelled correctly. It can still mis-label a low-contrast or `nv` frame
+  (a bowl read as `basket`/`sink`, a cup as `bowl`). Record the detector's label
+  in `notes`; the ground-truth `label` stays the controlled class.
+- `--target` is still useful for a single-image check on one plain bottle
+  (`--target bottle`), just not for a mixed-class dataset pass.
+- Report Z/W/H error per object as well as overall: the batch run writes
+  `eval_by_object.csv` next to `eval_by_lighting.csv` / `eval_by_distance.csv`,
+  so the bowl (widest W) and the cup (shortest H) each get their own track.
 - `--depth-model base` vs the default `small` changes Z by ~5 cm at 0.7 m, so
   keep the same model for the whole dataset and report which one was used.
 - Both anchors are given in pixels, so YOLO failing to detect a cup in low light
@@ -291,7 +341,7 @@ Notes for this dataset:
 
 ## 11. Augmentation: not used (reference only)
 
-The 100 images are **all real captures** (Section 2: 5 bottles x 5 distances x 4
+The 100 images are **all real captures** (Section 2: 5 objects x 5 distances x 4
 lighting modes). Augmentation is **not** used to build the dataset and is **not**
 a substitute for real photos: `Research_Proposals.md` requires 100 *photos taken
 via smartphone* (Step 2: "Capture 100 **distinct** images") with the distance and
@@ -377,12 +427,17 @@ mode) or in `notes`. Name the files as `<parent>_<filter>.jpg`, e.g.
 
 - [x] `--anchor-file <path>` in `test_pipeline.py` so the two cup anchors can be
       read straight from `anchor.txt` instead of being retyped per image.
+- [x] Per-folder anchors: every shot folder carries its own `anchor.txt`
+      (`dataset/<lighting>/<object>/anchor.txt`) and the pipeline resolves the
+      nearest one per image, so one re-shot scene cannot skew the rest.
+      `label_anchors.py` renders them into `anchordataset/` for a visual check.
 - [x] Batch mode in `test_pipeline.py` to process a whole dataset folder in one
-      run: `--dataset <root>` scans recursively, auto-discovers `anchor.txt`, and
-      `--depth-model all` runs small + base + large. Evaluation is written
-      alongside: `eval_per_image.csv`, `eval_summary.csv`, `eval_by_lighting.csv`,
-      `eval_by_distance.csv` (MAE / RMSE of Z on the middle object), so no separate
-      `eval_accuracy.py` is needed.
+      run: `--dataset <root>` scans recursively, auto-discovers each folder's
+      `anchor.txt`, and `--depth-model all` runs small + base + large. Evaluation
+      is written alongside: `eval_per_image.csv`, `eval_summary.csv`,
+      `eval_by_lighting.csv`, `eval_by_distance.csv`, `eval_by_object.csv`
+      (MAE / RMSE of Z on the middle object), so no separate `eval_accuracy.py`
+      is needed.
 - [ ] A check that flags an image where a cup's sampled depth drifted far from
       its session baseline (mis-aimed camera or moved cup).
 
@@ -393,7 +448,7 @@ mode) or in `notes`. Name the files as `<parent>_<filter>.jpg`, e.g.
 python test_pipeline.py --dataset dataset --depth-model all --calib inverse
 ```
 
-Results land under `outputs/<model>/<lighting>/<bottle>/`, with the evaluation at
+Results land under `outputs/<model>/<lighting>/<object>/`, with the evaluation at
 the top of `outputs/`. Ground truth is read from `ground_truth.csv` if present,
 otherwise the true distance is parsed from the filename and the lighting from the
 folder.

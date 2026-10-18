@@ -1,0 +1,8 @@
+target objects:
+b01 W:6.2cm,H:24cm 
+c01 W:12cm, H:8cm			`											
+
+
+anchors
+cups W:12cm, H:8cm
+cups without handle W:8cm, H:8cm

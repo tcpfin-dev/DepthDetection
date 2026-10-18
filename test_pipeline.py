@@ -47,7 +47,10 @@ Pass ``--dataset <root>`` to size a whole dataset in one shot. The script then
 
   * walks ``<root>`` recursively and picks up every image,
   * finds the cup anchors itself - ``--anchor`` if given, else ``--anchor-file``,
-    else an ``anchor.txt`` next to the dataset root (or its parent),
+    else the ``anchor.txt`` in the image's own folder. Every object folder is
+    expected to carry its own ``dataset/<lighting>/<object>/anchor.txt``; a
+    folder without one is skipped as a whole and reported once, so a half-shot
+    dataset never silently borrows another scene's calibration,
   * if ``--depth-model all`` is given, runs **small + base + large** and reports
     how each one does.
 
@@ -62,12 +65,15 @@ Output layout in batch mode (mirrors the dataset tree, one subdir per model):
     <out>/eval_summary.csv       MAE / RMSE of Z per model
     <out>/eval_by_lighting.csv   the same, grouped by lighting token
     <out>/eval_by_distance.csv   the same, grouped by true distance
+    <out>/eval_by_object.csv     the same, grouped by object id (b01, c01, bwl01, ...)
 
 The evaluation picks the **middle object** (the detection whose box centre sits
 between the two anchor pixels), matching ``ImageCollection.md``. Ground truth is
 read from a ``ground_truth.csv`` (Section 8 schema) if one is found next to the
 dataset; otherwise the true distance is parsed from the filename
 (``..._50cm`` or ``..._d050_...``) and the lighting from the folder / filename.
+Each ``anchor.txt`` is stamped into that image's ``_results.json`` meta and the
+``anchor_file`` column of ``eval_per_image.csv``.
 
 Ground truth is **optional**. Without it the pipeline still sizes every image and
 just prints the model outputs (Z / W / H) instead of a comparison - it never
@@ -144,6 +150,10 @@ BATCH_DEPTH_MODELS = ("small", "base", "large")
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tif", ".tiff"}
 LIGHTING_TOKENS = ("white", "warm", "dim", "nv")
 
+# Parsed anchor.txt contents, keyed by resolved path (batch mode hits the same
+# per-folder file once per image per model, so parse it once).
+_ANCHOR_CACHE = {}
+
 # EXIF tag ids used for the focal-length shortcut.
 _EXIF_FOCAL_35MM = 41989  # FocalLengthIn35mmFilm
 _FULLFRAME_WIDTH_MM = 36.0
@@ -189,9 +199,11 @@ def parse_args(argv=None):
     calib.add_argument("--distance", type=float, default=None,
                        help="Measured camera-to-object distance (m) of the most confident target (beta=0).")
     calib.add_argument("--anchor", action="append", default=[], metavar="U,V,DIST",
-                       help="Ground-truth anchor 'u,v,distance_m'. Repeat >=2 times for an affine fit.")
+                       help="Ground-truth anchor 'u,v,distance_m'. Repeat >=2 times for an "
+                            "affine fit; overrides any anchor.txt.")
     calib.add_argument("--anchor-file", type=Path, default=None, metavar="PATH",
-                       help="Read anchors from an anchor.txt ('cup1 anchor (636, 663, 40cm)').")
+                       help="Force ONE anchor.txt for every image (overrides the per-folder "
+                            "discovery; 'cup1 anchor (636, 663, 40cm)' lines).")
     calib.add_argument("--object-height", type=float, default=None, metavar="M",
                        help="Known real height (m) of the --target class; distance from box height + focal length.")
     calib.add_argument("--calib", choices=["affine", "inverse"], default="affine",
@@ -246,13 +258,43 @@ def parse_anchor_file(path):
     return anchors
 
 
-def discover_anchor_file(dataset_root):
-    """Look for an ``anchor.txt`` next to the dataset root (or its parent)."""
-    root = Path(dataset_root)
-    for cand in (root / "anchor.txt", root.parent / "anchor.txt"):
-        if cand.is_file():
-            return cand
-    return None
+def anchor_file_for(image_path):
+    """The ``anchor.txt`` that must sit in an image's OWN folder, or ``None``.
+
+    Anchors are stored per object folder (``dataset/<lighting>/<object>/
+    anchor.txt``). There is deliberately no inheritance from a parent folder: a
+    folder without the file is a folder whose calibration is unknown, so callers
+    skip it and warn instead of borrowing another scene's pixels.
+    """
+    path = Path(image_path).resolve().parent / "anchor.txt"
+    path = path if path.is_file() else None
+    return path
+
+
+def load_anchor_file(path, cache=None):
+    """``parse_anchor_file`` with memoisation - a batch reuses folders."""
+    cache = _ANCHOR_CACHE if cache is None else cache
+    key = str(Path(path).resolve())
+    if key not in cache:
+        cache[key] = parse_anchor_file(path)
+    return cache[key]
+
+
+def resolve_anchors(args, image_path, cache=None):
+    """Anchors for one image: ``--anchor`` > ``--anchor-file`` > its folder's anchor.txt.
+
+    Returns ``(anchors, anchor_file)``; ``anchors`` is an empty list when the
+    image's folder has no anchor.txt, which makes the caller skip that folder
+    (unless ``--distance`` / ``--object-height`` calibrates it another way).
+    """
+    if args.anchor:
+        return list(args.anchor), None
+    if args.anchor_file:
+        return load_anchor_file(args.anchor_file, cache), Path(args.anchor_file)
+    path = anchor_file_for(image_path)
+    if path is not None:
+        return load_anchor_file(path, cache), path
+    return [], None
 
 
 def find_images(root):
@@ -537,7 +579,8 @@ def save_outputs(out_dir, stem, image, depth, results, meta):
 # --------------------------------------------------------------------------- #
 # core per-image sizing                                                        #
 # --------------------------------------------------------------------------- #
-def size_image(args, image, src_path, model_key, pipe=None, yolo_model=None, anchors=None, quiet=False):
+def size_image(args, image, src_path, model_key, pipe=None, yolo_model=None, anchors=None,
+               anchor_file=None, quiet=False):
     """Run depth -> YOLO -> calibration -> metric sizing on one image.
 
     Returns a dict with ``meta`` / ``results`` / ``depth``. Raises PipelineSkip
@@ -624,6 +667,7 @@ def size_image(args, image, src_path, model_key, pipe=None, yolo_model=None, anc
         "yolo": args.yolo,
         "calibration": {"mode": how, "model": model, "alpha": alpha, "beta": beta,
                         "object_height_m": args.object_height, "distance_m": args.distance,
+                        "anchor_file": str(anchor_file) if anchor_file else None,
                         "anchors": list(anchors)},
     }
     return {"meta": meta, "results": results, "depth": depth}
@@ -662,12 +706,14 @@ def pick_middle(results, anchors):
 # --------------------------------------------------------------------------- #
 # evaluation                                                                   #
 # --------------------------------------------------------------------------- #
-def eval_row(model, image_path, group, true_distance, lighting, picked, ground_truth):
+def eval_row(model, image_path, group, true_distance, lighting, picked, ground_truth,
+             anchor_file=None):
     """One evaluation row for the picked (middle) object of one image."""
     row = {
         "model": model,
         "filename": Path(image_path).name,
         "group": group,
+        "anchor_file": str(anchor_file) if anchor_file else "",
         "lighting": lighting,
         "distance_true_m": true_distance,
         "label": picked["label"] if picked else "",
@@ -693,6 +739,20 @@ def eval_row(model, image_path, group, true_distance, lighting, picked, ground_t
                     row[key] = float(gt[key])
             except ValueError:
                 pass
+
+    # Object id: ground-truth column first (``object_id`` or the older
+    # ``bottle_id``), else the filename prefix (``bottle01_d050_white`` ->
+    # ``bottle01``). Grouped per object because the set mixes bottle/cup/bowl.
+    row["object_id"] = ""
+    if gt:
+        for key in ("object_id", "bottle_id"):
+            if (gt.get(key) or "").strip():
+                row["object_id"] = gt[key].strip()
+                break
+    if not row["object_id"]:
+        match = re.match(r"([a-z]+\d+)_", Path(image_path).name.lower())
+        if match:
+            row["object_id"] = match.group(1)
 
     for name, pred_key, true_key, scale in (
         ("z", "z_m", "distance_true_m", 100.0),
@@ -744,7 +804,8 @@ def write_eval(out_dir, rows, model_keys):
     """Write eval CSVs (per-image + grouped summaries) and print a summary table."""
     out_dir.mkdir(parents=True, exist_ok=True)
     fields = [
-        "model", "filename", "group", "lighting", "distance_true_m",
+        "model", "filename", "object_id", "group", "anchor_file", "lighting",
+        "distance_true_m",
         "label", "conf", "z_m", "z_err_cm", "z_abs_err_cm", "z_rel_err_pct",
         "w_m", "true_w_m", "w_err_cm", "h_m", "true_h_m", "h_err_cm",
     ]
@@ -790,6 +851,7 @@ def write_eval(out_dir, rows, model_keys):
 
     write_grouped(out_dir / "eval_by_lighting.csv", "lighting", "lighting")
     write_grouped(out_dir / "eval_by_distance.csv", "distance_true_m", "distance_m")
+    write_grouped(out_dir / "eval_by_object.csv", "object_id", "object_id")
 
     print("\n==================== evaluation (middle object) ====================")
     print(f"{'model':<8}{'n':>4}{'MAE Z(cm)':>12}{'RMSE Z(cm)':>12}{'MAE rel(%)':>12}")
@@ -832,23 +894,30 @@ def write_eval(out_dir, rows, model_keys):
 # entry points                                                                 #
 # --------------------------------------------------------------------------- #
 def run_single(args, model_keys):
-    """Original single-image flow (kept byte-for-byte compatible in behaviour)."""
-    if args.object_height is None and args.distance is None and not args.anchor:
-        sys.exit("No calibration: pass --anchor u,v,distance_m (>=2), --anchor-file, "
-                 "--distance <m>, or --object-height <m>.")
-
+    """Original single-image flow, now with per-folder anchor discovery."""
     image, src_path = load_image(args.image, args.size)
     args.out.mkdir(parents=True, exist_ok=True)
     if src_path is None:
         print("[warn] --image not given; using a synthetic image (smoke test only).")
+        anchors, anchor_file = list(args.anchor), None
         src_path = args.out / "synthetic_input.png"
         image.save(src_path)
+    else:
+        anchors, anchor_file = resolve_anchors(args, src_path)
+
+    if anchor_file:
+        print(f"[info] anchors  : {len(anchors)} from {anchor_file} -> {anchors}")
+    if args.object_height is None and args.distance is None and not anchors:
+        sys.exit("No calibration: pass --anchor u,v,distance_m (>=2), --anchor-file, "
+                 "--distance <m>, or --object-height <m> "
+                 f"({Path(src_path).resolve().parent} has no anchor.txt).")
 
     stem = Path(src_path).stem
     multi = len(model_keys) > 1
     for model_key in model_keys:
         try:
-            rec = size_image(args, image, src_path, model_key, anchors=args.anchor)
+            rec = size_image(args, image, src_path, model_key, anchors=anchors,
+                             anchor_file=anchor_file)
         except PipelineSkip as exc:
             sys.exit(f"[{model_key}] {exc}")
         print_results_table(rec["results"])
@@ -862,25 +931,65 @@ def run_single(args, model_keys):
 
 
 def run_batch(args, model_keys):
-    """Scan a dataset folder, run every image through every model, write an eval."""
+    """Scan a dataset folder, run every image through every model, write an eval.
+
+    Every object folder must carry its own ``anchor.txt``. The decision is made
+    per FOLDER, not per image: a folder without one is skipped as a whole and
+    reported once, with a hint to add the file (``--anchor`` / ``--anchor-file``
+    force anchors for everything, ``--distance`` / ``--object-height`` calibrate
+    without them).
+    """
     dataset_root = Path(args.dataset)
     images = find_images(dataset_root)
     if not images:
         sys.exit(f"No images found under {dataset_root}")
 
-    if not args.anchor and args.anchor_file:
-        args.anchor = parse_anchor_file(args.anchor_file)
-    if not args.anchor:
-        cand = discover_anchor_file(dataset_root)
-        if cand:
-            args.anchor = parse_anchor_file(cand)
-            print(f"[info] anchors  : {len(args.anchor)} from {cand} -> {args.anchor}")
-    if args.object_height is None and args.distance is None and not args.anchor:
-        sys.exit("No calibration found: pass --anchor / --anchor-file / --distance / --object-height "
-                 f"(looked for an anchor.txt next to {dataset_root} too).")
+    # Group images by their object folder (the directory that holds anchor.txt).
+    folders = {}
+    for img in images:
+        folders.setdefault(img.parent, []).append(img)
+
+    cache = {}
+    folder_anchors, folder_anchor_file = {}, {}
+    for folder, imgs in folders.items():
+        anchors, source = resolve_anchors(args, imgs[0], cache)
+        folder_anchors[folder], folder_anchor_file[folder] = anchors, source
+
+    have = sorted(f for f in folders if folder_anchors[f])
+    missing = sorted(f for f in folders if not folder_anchors[f])
+    if args.anchor:
+        print(f"[info] anchors  : {len(args.anchor)} from --anchor, forced on all "
+              f"{len(images)} image(s)")
+    elif args.anchor_file:
+        print(f"[info] anchors  : {args.anchor_file} forced on all {len(images)} image(s)")
+    else:
+        print(f"[info] anchors  : {len(have)}/{len(folders)} object folder(s) have an anchor.txt")
+        for folder in have:
+            print(f"                  {folder}  ({len(folder_anchors[folder])} anchors, "
+                  f"{len(folders[folder])} image(s))")
+
+    if missing:
+        if args.object_height is not None or args.distance is not None:
+            how = "--object-height" if args.object_height is not None else "--distance"
+            print(f"[info] {len(missing)} folder(s) have no anchor.txt; {how} calibrates "
+                  "them anyway")
+        else:
+            print(f"\n[warn] SKIPPING {len(missing)} object folder(s) - no anchor.txt in them:")
+            for folder in missing:
+                print(f"         {folder}")
+            example = f"{have[0] / 'anchor.txt'}" if have else "dataset/<lighting>/<object>/anchor.txt"
+            print(f"       Add an anchor.txt to each of those folders, same format as {example}:")
+            print("         cup1 anchor (636, 663, 40cm)")
+            print("         cup2 anchor (1097, 605, 100cm)")
+            if not have:
+                sys.exit("No object folder has an anchor.txt and no other calibration was "
+                         "given; nothing to size.")
+            print()
+            images = [img for img in images if folder_anchors[img.parent]]
 
     ground_truth = {} if args.no_eval else load_ground_truth(dataset_root)
-    print(f"[info] dataset  : {dataset_root} ({len(images)} images) x models {', '.join(model_keys)}")
+    print(f"[info] dataset  : {dataset_root} ({len(images)} images in "
+          f"{len({i.parent for i in images})} folder(s)) x models {', '.join(model_keys)}")
 
     # Build the heavy models ONCE and reuse them across the whole batch.
     yolo_model = make_yolo(args.yolo)
@@ -904,17 +1013,20 @@ def run_batch(args, model_keys):
             continue
         for model_key in model_keys:
             out_dir = args.out / model_key / rel_parent
+            anchors = folder_anchors[img.parent]
+            anchor_file = folder_anchor_file[img.parent]
             try:
                 rec = size_image(args, image, img, model_key, pipes[model_key],
-                                 yolo_model, args.anchor, quiet=True)
+                                 yolo_model, anchors, anchor_file, quiet=True)
             except PipelineSkip as exc:
                 print(f"[skip] {img.name} [{model_key}]: {exc}")
                 skipped += 1
                 continue
             save_outputs(out_dir, img.stem, image, rec["depth"], rec["results"], rec["meta"])
-            picked = pick_middle(rec["results"], args.anchor)
+            picked = pick_middle(rec["results"], anchors)
             row = eval_row(model_key, img, group,
-                           None if args.no_eval else true_distance, lighting, picked, ground_truth)
+                           None if args.no_eval else true_distance, lighting, picked,
+                           ground_truth, anchor_file)
             rows.append(row)
             note = ""
             if row["z_err_cm"] is not None:
@@ -941,10 +1053,8 @@ def run_batch(args, model_keys):
 def main(argv=None):
     args = parse_args(argv)
     model_keys = list(BATCH_DEPTH_MODELS) if args.depth_model == "all" else [args.depth_model]
-    # --anchor-file applies to both single and batch mode; resolve it up front.
-    if not args.anchor and args.anchor_file:
-        args.anchor = parse_anchor_file(args.anchor_file)
-        print(f"[info] anchors  : {len(args.anchor)} from {args.anchor_file} -> {args.anchor}")
+    # --anchor / --anchor-file are resolved per image (see resolve_anchors), so a
+    # per-folder anchor.txt only applies to the shots that live in that folder.
     if args.dataset is not None:
         return run_batch(args, model_keys)
     return run_single(args, model_keys)
