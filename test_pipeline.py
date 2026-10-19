@@ -354,6 +354,10 @@ def load_ground_truth(dataset_root):
             if key:
                 table[key] = row
                 table[Path(key).stem] = row
+                light = (row.get("lighting") or "").strip().lower()
+                if light:
+                    table[f"{light}/{key}"] = row
+                    table[f"{light}/{Path(key).stem}"] = row
         print(f"[info] ground truth: {len(rows)} rows from {cand}")
         return table
     return {}
@@ -724,7 +728,11 @@ def eval_row(model, image_path, group, true_distance, lighting, picked, ground_t
         "true_w_m": None,
         "true_h_m": None,
     }
-    gt = ground_truth.get(Path(image_path).name) or ground_truth.get(Path(image_path).stem)
+    name = Path(image_path).name
+    stem = Path(image_path).stem
+    light = (lighting or "").lower()
+    gt = (ground_truth.get(f"{light}/{name}") or ground_truth.get(f"{light}/{stem}")
+          or ground_truth.get(name) or ground_truth.get(stem))
     if gt:
         try:
             if gt.get("distance_m"):

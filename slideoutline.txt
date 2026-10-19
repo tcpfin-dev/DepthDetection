@@ -1,0 +1,215 @@
+# Mid-Term Presentation — Slide Content
+
+---
+
+## 1. Title Slide
+
+**Title:**
+Zero-Shot Monocular Depth Estimation for Automated Crop/Object Sizing in Low-Contrast Environments
+
+**Subtitle:**
+Turning a single RGB image into real-world width, height, and area with YOLOv8, Depth Anything V2, and a geometric mapping engine
+
+**Presenter line:**
+[Your Name] · [Program / Department] · [Date]
+Mid-Term Progress Review
+
+**Hook:**
+A frozen depth model plus two tape-measured anchors reaches sub-centimeter distance error, with no training, stereo camera, or LiDAR.
+
+**Visual suggestion:**
+Original RGB photo beside its colorized depth map, with a YOLO box and predicted width/height.
+
+**Speaker notes:**
+The project asks how accurately a phone camera and a pre-trained depth model can measure a real object. The contribution is a reproducible benchmark and a practical measurement pipeline, not a new network.
+
+---
+
+## 2. Problem & Motivation
+
+**Headline:**
+Measuring object size in the field is still manual, slow, and inconsistent.
+
+**The problem:**
+- Crop grading, inventory, packaging, and robotic picking all need distance and physical size.
+- Manual tape measurement does not scale and is impossible for a moving or remote camera.
+- Depth hardware is expensive, fragile, short-range, and needs calibration.
+- Ordinary RGB cameras are already everywhere.
+
+**The gap:**
+- Most depth benchmarks use controlled indoor scenes, not low-contrast real captures.
+- There is no simple pipeline that reports real-world size error across distance and lighting.
+
+**Approach:**
+- Frozen YOLOv8 detector + frozen Depth Anything V2 depth model.
+- Two known anchor distances turn relative depth into metric measurements.
+- No model training, no task-specific fine-tuning.
+
+**Research question:**
+How accurately can a zero-shot depth model, paired with a detector and minimal anchor calibration, recover object distance and size across distance and illumination?
+
+**Visual suggestion:**
+Two-column comparison: manual measurement or depth sensor versus one RGB photo plus a zero-shot model.
+
+**Speaker notes:**
+The open question is not whether the depth map looks plausible, but whether it is accurate enough to measure real objects. Hardware depth is costly and brittle; monocular depth is free at capture time.
+
+---
+
+## 3. Introduction to YOLO & Depth Model
+
+**Headline:**
+Two frozen pre-trained models, each doing one job.
+
+**YOLOv8 — object detection:**
+- Finds each object and returns a bounding box, class, and confidence.
+- Pre-trained on COCO; the relevant classes here are `bottle`, `cup`, and `bowl`.
+- Frozen and used zero-shot, with no fine-tuning.
+
+**Depth Anything V2 — monocular depth:**
+- Converts one RGB image into a relative near/far depth map.
+- The output is relative, not metric; it needs calibration to become meters.
+- Three sizes, all tested here:
+
+| Variant | Trade-off |
+|---|---|
+| Small | Fastest, lower accuracy |
+| Base | Balanced |
+| Large | Slowest, highest accuracy |
+
+- MiDaS is included as a classical control baseline.
+
+**Why combine them:**
+- YOLO answers *what* and *where*; depth answers *near or far*; the mapping engine turns both into measurements.
+
+**Visual suggestion:**
+RGB image split into two paths: YOLO box on one side, depth map on the other, merged into one measured object.
+
+**Speaker notes:**
+Detection and depth are independent off-the-shelf components, so either can be swapped or upgraded. Because nothing is trained, every result is a genuine zero-shot result.
+
+---
+
+## 4. Pipeline Architecture
+
+**Headline:**
+An end-to-end pipeline combines off-the-shelf perception with a geometric mapping engine.
+
+**Pipeline stages:**
+1. **Capture:** one ordinary RGB photo.
+2. **Detect:** YOLOv8 finds each object and draws its box.
+3. **Estimate depth:** Depth Anything V2 produces a relative near/far map.
+4. **Map to metric:** the geometric mapping engine converts model output into real measurements.
+5. **Deliver:** annotated image, depth visualization, per-object measurements, and batch evaluation.
+
+**What the geometric mapping engine does:**
+- **Calibrate:** learns the depth-to-distance scale from two reference cups at 0.40 m and 1.00 m.
+- **Locate:** assigns a real-world distance to every detected object.
+- **Size:** converts the object's pixel footprint at that distance into centimeters.
+- **Batch mode:** each scene uses its own anchor file; one command runs a single image or the full dataset.
+
+**Visual suggestion:**
+Five-box flow: `Photo → YOLO detection → Depth estimation → Geometric mapping engine → Measurements`. Show the engine as one highlighted box, with detection and depth as separate inputs.
+
+**Speaker notes:**
+The models stay off-the-shelf; the engineering is in the mapping from relative depth to trustworthy measurements. Swapping the detector or depth model does not change the rest of the pipeline.
+
+---
+
+## 5. Experiment Setup / Data Collection
+
+**Headline:**
+A controlled capture matrix isolates distance and lighting as the variables.
+
+**Capture matrix (100 images):**
+
+| Axis | Levels | Count |
+|---|---|---|
+| Objects | 3 bottles, 1 cup, 1 bowl | 5 |
+| Distance | 0.50 to 0.90 m, in 10 cm steps | 5 |
+| Lighting | white, warm, dim, night vision | 4 |
+| **Total** | **5 × 5 × 4** | **100** |
+
+**Rig and ground truth:**
+- Camera locked on a tripod; height, zoom, and resolution never change.
+- Two reference cups fixed at 0.40 m and 1.00 m.
+- Measured object placed at 0.50, 0.60, 0.70, 0.80, or 0.90 m.
+- Distance and true width/height recorded with a tape measure.
+
+**Lighting modes:**
+
+| Mode | Condition |
+|---|---|
+| White | Bright, even reference case |
+| Warm | Orange colour cast |
+| Dim | Low light, flat and noisy |
+| Night vision | Lights off, IR illuminator, near-monochrome |
+
+**Current progress:**
+- 40 pilot images collected: cup and bottle across four lighting modes and five distances.
+- This deck reports the white-light cup slice: 5 distances × 3 depth models.
+
+**Visual suggestion:**
+Capture matrix grid with completed cells highlighted, plus a simple rig diagram showing the camera, the two anchors, and the five object positions.
+
+**Speaker notes:**
+The fixed rig makes every error attributable to the depth model and calibration, not camera motion. The white-light cup slice is the baseline; harder lighting and object types follow.
+
+---
+
+## 6. Evaluation — Depth Model Results (Distance)
+
+**Headline:**
+Depth Anything V2 Large averages **0.76 cm error (1.12%)** on the white-light cup sequence.
+
+**Setup:**
+Cup c01, white lighting, five distances from 0.50 to 0.90 m, five images per model. YOLOv8n detector, 65° field of view, scale from the 0.40 m and 1.00 m anchors.
+
+**Overall accuracy:**
+
+| Model | Mean distance error (cm) | Mean error (%) |
+|---|---|---|
+| Small | 2.07 | 3.00 |
+| Base | 1.16 | 1.82 |
+| Large | **0.76** | **1.12** |
+
+**Distance error by range:**
+
+| True distance | Small | Base | Large |
+|---|---|---|---|
+| 0.50 m | 2.4 cm | 1.9 cm | 1.1 cm |
+| 0.60 m | 1.5 cm | 1.2 cm | 0.6 cm |
+| 0.70 m | 1.4 cm | 0.9 cm | 0.02 cm |
+| 0.80 m | 0.8 cm | 0.2 cm | 0.3 cm |
+| 0.90 m | 4.2 cm | 1.6 cm | 1.7 cm |
+
+**Size accuracy (tape-measured 12 × 8 cm cup):**
+
+| Model | Width error | Height error |
+|---|---|---|
+| Small | 0.38 cm / 3.2% | 0.39 cm / 4.9% |
+| Base | 0.25 cm / 2.1% | 0.30 cm / 3.7% |
+| Large | **0.24 cm / 2.0%** | **0.23 cm / 2.9%** |
+
+**Key findings:**
+1. **Larger model, better accuracy.** Mean distance error falls from 2.07 cm to 1.16 cm to 0.76 cm; size error follows the same trend.
+2. **0.70 to 0.80 m is the sweet spot.** Large is almost exact at 0.70 m and within 0.3 cm at 0.80 m.
+3. **Accuracy drops at the edges.** Close shots read slightly short; the 0.90 m shot reads long, and Small suffers most.
+4. **The setup checks out.** The reference cups return within 1 cm of their marks, and all 5 images were detected.
+
+**Bottom line:**
+- Large gives sub-centimeter distance error and keeps size error under 3%.
+- A phone photo plus two anchors is enough: no training, stereo camera, or depth sensor.
+
+**Visual suggestion:**
+Line chart of distance error versus true distance for the three models, plus a bar chart of mean error.
+
+**Speaker notes:**
+The middle of the range is strongest; close shots read short and far shots read long. Treat this as a baseline from one object and one lighting condition, not a universal claim.
+
+---
+
+7. Comparing Depth Model Results (White vs Dark/Night Vision) 
+8. Comparing Depth Model Results (Opaque vs Transparent)
+9. Project Timeline & Milestone
+10. Conclusion/Q&A
