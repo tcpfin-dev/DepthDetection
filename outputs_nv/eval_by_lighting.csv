@@ -1,0 +1,4 @@
+model,lighting,n,mae_z_cm,rmse_z_cm,mae_rel_pct
+small,nv,5,12.18,22.13,14.80
+base,nv,5,10.92,22.03,12.82
+large,nv,5,11.51,22.11,13.66
