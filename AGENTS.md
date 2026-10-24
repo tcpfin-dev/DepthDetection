@@ -78,6 +78,7 @@ python test_pipeline.py --image photo.jpg --target bottle --depth-model midas \
 # every image, write an evaluation.  --depth-model all = small + base + large.
 python test_pipeline.py --dataset dataset --depth-model all --calib inverse
 python test_pipeline.py --dataset dataset/white --depth-model large --conf 0.2
+python test_pipeline.py --dataset dataset --yolo-size medium --calib inverse
 
 # Anchors: click them instead of reading pixels off in Paint
 python pick_anchors.py                          # per-folder anchor.txt writer
@@ -104,6 +105,10 @@ runs instead of dying). It then runs each image through every requested model
 `eval_by_distance.csv`, `eval_by_object.csv`. `--anchor` / `--anchor-file` force
 one calibration on every image and `--distance` / `--object-height` calibrate
 without anchors at all, so those flags bypass the per-folder requirement.
+`--yolo-size nano|small|medium|large|xlarge` selects the YOLOv8 backbone
+(default `nano`; `--yolo <weights>` overrides it). `medium` detects the dataset's
+small objects (apple, b02 bottle) far more reliably than `nano`, while `large`
+has not consistently helped.
 The evaluation is computed on the
 **middle object** (the detection whose box centre lies between the two anchor
 pixels), with MAE / RMSE of Z in cm and the relative %; ground truth comes from a

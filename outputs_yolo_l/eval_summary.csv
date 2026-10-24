@@ -1,0 +1,2 @@
+model,n_sized,mae_z_cm,rmse_z_cm,mae_rel_pct
+small,100,10.54,18.94,14.57

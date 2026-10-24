@@ -5,8 +5,8 @@ Field guide for the **100-image custom dataset** required by
 (`test_pipeline.py`) is already built; what is missing is the dataset + the
 physical ground truth it is evaluated against.
 
-Goal: 100 camera photos of **five objects across three classes** - three bottles
-(clear, blue, opaque), one opaque cup and one opaque bowl - spanning different
+Goal: 100 camera photos of **five objects across four classes** - two bottles
+(clear, blue), one apple, one opaque cup and one opaque bowl - spanning different
 **sizes/colors**, **distances**, and **lighting conditions**, with the true
 camera-to-object distance and real dimensions tape-measured for every shot.
 
@@ -48,7 +48,7 @@ folder that has none (warning once, listing the folders) instead of guessing.
 - **Two anchor cups** (any two easy-to-see cups) - permanently on the 0.40 m and
   1.00 m marks for the whole session. Keep these separate from the **c01** cup,
   which is a measured object that moves to the middle marks.
-- The 5 objects: 3 bottles (clear, blue, opaque), 1 opaque cup (c01), 1 opaque bowl (bwl01).
+- The 5 objects: 2 bottles (clear b01, blue b02), 1 apple (a01), 1 opaque cup (c01), 1 opaque bowl (bwl01).
 - Paper/notebook or a laptop to log ground truth **as you shoot**.
 
 ---
@@ -60,16 +60,16 @@ anchors are constant, so they are not an axis.
 
 | Axis | Levels | Count |
 |---|---|---|
-| Objects (3 bottles + 1 cup + 1 bowl) | b01, b02, b03, c01, bwl01 | 5 |
+| Objects (2 bottles + 1 apple + 1 cup + 1 bowl) | b01, b02, a01, c01, bwl01 | 5 |
 | Middle-object distance | 0.50, 0.60, 0.70, 0.80, 0.90 m | 5 |
 | Lighting (real, 4 modes) | white, warm, dim, nv | 4 |
 
 **5 x 5 x 4 = 100.**
 
-The object set is deliberately mixed: the three bottles keep the class-level
-control the earlier plan had, while the cup and the bowl add a different
-geometry (short and wide, curved rim, big planar top) that stresses the W/H
-back-projection on non-bottle shapes. Middle distance and lighting are the
+The object set is deliberately mixed: the two bottles keep the class-level
+control the earlier plan had, while the apple, the cup and the bowl add a different
+geometry (small and round; short and wide; curved rim, big planar top) that stresses
+the W/H back-projection on non-bottle shapes. Middle distance and lighting are the
 variables the paper reports against; because the objects now differ in class,
 report Z/W/H error **per object** as well as overall - the batch run writes
 `eval_by_object.csv` for exactly that.
@@ -78,7 +78,7 @@ report Z/W/H error **per object** as well as overall - the batch run writes
 
 ## 3. Object selection (the 5 objects)
 
-The set is fixed at **5 objects** (three bottles, one cup, one bowl); the 4
+The set is fixed at **5 objects** (two bottles, one apple, one cup, one bowl); the 4
 lighting modes make up the rest of the 100. Inspect them first and give each a
 role so the set varies **deliberately**, because the novelty claim is
 *low-contrast* scenes:
@@ -87,12 +87,12 @@ role so the set varies **deliberately**, because the novelty claim is
 |---|---|---|---|
 | b01 | normal plastic bottle | `bottle` | clear / transparent bottle - hardest contrast case |
 | b02 | blue plastic bottle | `bottle` | dark, saturated plastic - colour/contrast change on a bottle |
-| b03 | opaque bottle | `bottle` | normal opaque bottle (easy bottle control) |
+| a01 | apple | `apple` | small, round, low-contrast object - hardest detection case |
 | c01 | opaque cup | `cup` | new class: short, curved, visible interior - different aspect ratio |
 | bwl01 | opaque bowl | `bowl` | new class: wide, low, large planar top - hardest W/H case |
 
-`label` is the controlled class recorded in the ground truth (`bottle`, `cup`,
-`bowl`); all three are real COCO classes, so YOLO can name them.
+`label` is the controlled class recorded in the ground truth (`bottle`, `apple`,
+`cup`, `bowl`); all four are real COCO classes, so YOLO can name them.
 
 **The c01 cup is NOT one of the two anchor cups.** The anchors stay taped on the
 0.40 m / 1.00 m marks for the whole session; c01 is a separate cup that is placed
@@ -219,7 +219,7 @@ distance from the camera lens, tape-taut, at each mark.
 For every image capture these (this is what RMSE/MAE are computed against):
 
 - `filename`
-- `object_id` (b01 | b02 | b03 | c01 | bwl01)
+- `object_id` (b01 | b02 | a01 | c01 | bwl01)
 - `label` (bottle | cup | bowl - the controlled class of the middle object)
 - `distance_m` (tape-measured camera -> **middle object**)
 - `true_w_m`, `true_h_m` (from Section 3)
@@ -240,14 +240,15 @@ Use a systematic name so the log and the pipeline outputs line up:
 ```
 bottle01_d050_white.jpg      # b01, 0.5 m, cool/fluorescent
 bottle02_d080_warm.jpg       # b02, 0.8 m, warm light
+apple01_d070_dim.jpg         # a01, 0.7 m, dim light
 cup01_d090_nv.jpg            # c01, 0.9 m, lights off (night vision)
 bowl01_d070_dim.jpg          # bwl01, 0.7 m, dim light
 ```
 
 Pattern: `<object><ID>_d<distance_cm>_<lighting>.jpg`
 
-`<object>` is `bottle`, `cup` or `bowl` and `<ID>` is that object's 2-digit
-number, so `b01` -> `bottle01`, `c01` -> `cup01`, `bwl01` -> `bowl01`. The
+`<object>` is `bottle`, `apple`, `cup` or `bowl` and `<ID>` is that object's 2-digit
+number, so `b01` -> `bottle01`, `a01` -> `apple01`, `c01` -> `cup01`, `bwl01` -> `bowl01`. The
 prefix is also what the batch eval falls back to for `object_id` when the
 `ground_truth.csv` column is empty.
 
@@ -269,7 +270,7 @@ Join on `filename`, then match the pipeline row whose box sits in the middle
 filename,object_id,label,distance_m,true_w_m,true_h_m,true_volume_ml,lighting,augmented,notes
 bottle01_d050_white.jpg,b01,bottle,0.50,0.068,0.21,,white,false,
 bottle02_d060_dim.jpg,b02,bottle,0.60,0.062,0.21,,dim,false,
-bottle03_d070_warm.jpg,b03,bottle,0.70,0.070,0.22,,warm,false,
+apple01_d070_dim.jpg,a01,apple,0.70,0.075,0.070,,dim,false,
 cup01_d080_nv.jpg,c01,cup,0.80,0.080,0.095,,nv,false,
 bowl01_d090_white.jpg,bwl01,bowl,0.90,0.150,0.060,,white,false,
 ```

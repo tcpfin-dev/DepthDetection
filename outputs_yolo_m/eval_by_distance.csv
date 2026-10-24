@@ -1,0 +1,6 @@
+model,distance_true_m,n,mae_z_cm,rmse_z_cm,mae_rel_pct
+small,0.5,20,3.34,4.53,6.68
+small,0.6,20,7.10,15.70,11.83
+small,0.7,20,7.62,13.57,10.89
+small,0.8,20,6.09,11.02,7.62
+small,0.9,20,10.08,18.69,11.20

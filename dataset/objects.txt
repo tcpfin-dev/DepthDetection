@@ -1,5 +1,8 @@
 target objects:
+a01 W:7.5cm,H:7cm
 b01 W:6.2cm,H:24cm 
+b02 W:7.5cm,H:25cm 
+bwl01 W:12cm,H:6cm
 c01 W:12cm, H:8cm			`											
 
 

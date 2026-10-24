@@ -1,0 +1,5 @@
+model,lighting,n,mae_z_cm,rmse_z_cm,mae_rel_pct
+small,dim,25,7.26,14.87,9.91
+small,nv,25,14.91,23.50,20.85
+small,warm,25,8.50,16.48,11.67
+small,white,25,11.51,19.73,15.87

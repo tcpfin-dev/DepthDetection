@@ -91,10 +91,16 @@ Usage
     python test_pipeline.py --image photo.jpg --target bottle --object-height 0.20
     python test_pipeline.py --image photo.jpg --target bottle --depth-model midas \\
         --object-height 0.20
+    python test_pipeline.py --image photo.jpg --target bottle --yolo-size large
 
     # whole-dataset batch, three depth models, auto anchors + auto eval:
     python test_pipeline.py --dataset dataset --depth-model all --calib inverse
     python test_pipeline.py --dataset dataset/white --depth-model large --conf 0.2
+
+``--yolo-size nano|small|medium|large|xlarge`` selects the YOLOv8 backbone
+(default ``nano``); a larger one detects small, low-contrast objects such as the
+dataset's apple far more reliably at the cost of speed. ``--yolo <weights>``
+still takes an explicit path/name and overrides the preset.
 
 If ``--image`` is omitted a synthetic image is generated so the script also
 doubles as an environment/dependency smoke test (a calibration flag is still
@@ -141,6 +147,15 @@ MODELS = {
 }
 DEFAULT_DEPTH_MODEL = MODELS["small"]
 DEFAULT_YOLO = "yolov8n.pt"
+# ``--yolo-size`` presets; a larger model finds small/low-contrast objects better
+# but is slower. An explicit ``--yolo`` path always wins over the preset.
+YOLO_SIZES = {
+    "nano": "yolov8n.pt",
+    "small": "yolov8s.pt",
+    "medium": "yolov8m.pt",
+    "large": "yolov8l.pt",
+    "xlarge": "yolov8x.pt",
+}
 _SCRIPT_DIR = Path(__file__).resolve().parent
 
 # ``--depth-model all`` runs these three (in this order) over the whole dataset.
@@ -191,7 +206,12 @@ def parse_args(argv=None):
     parser.add_argument("--depth-model", default=DEFAULT_DEPTH_MODEL,
                         help="small/base/large (Depth Anything V2, default) | midas | midas-small | "
                              "'all' (batch: run small+base+large) | a HF id.")
-    parser.add_argument("--yolo", default=DEFAULT_YOLO, help=f"Ultralytics weights (default: {DEFAULT_YOLO}).")
+    parser.add_argument("--yolo", default=None,
+                        help=f"Ultralytics weights, e.g. yolov8m.pt (default: {DEFAULT_YOLO}, or the "
+                             "--yolo-size preset).")
+    parser.add_argument("--yolo-size", choices=list(YOLO_SIZES), default=None,
+                        help="YOLOv8 size preset: nano | small | medium | large | xlarge "
+                             "(default: nano; overridden by --yolo).")
     parser.add_argument("--conf", type=float, default=0.25, help="Detection confidence threshold (default: 0.25).")
     parser.add_argument("--imgsz", type=int, default=640, help="YOLO inference image size (default: 640).")
 
@@ -226,7 +246,10 @@ def parse_args(argv=None):
                         help="Batch mode: just print the model predictions and skip the ground-truth "
                              "evaluation entirely (no ground truth needed, no eval CSVs written).")
     parser.add_argument("--size", type=int, default=512, help="Synthetic image side when --image is omitted.")
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    if args.yolo is None:
+        args.yolo = YOLO_SIZES[args.yolo_size] if args.yolo_size else DEFAULT_YOLO
+    return args
 
 
 # --------------------------------------------------------------------------- #

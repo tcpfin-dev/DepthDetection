@@ -1,4 +1,0 @@
-model,n_sized,mae_z_cm,rmse_z_cm,mae_rel_pct
-small,5,15.30,17.37,20.38
-base,5,11.63,12.85,15.92
-large,5,8.09,8.87,11.14
