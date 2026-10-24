@@ -1,6 +1,0 @@
-model,object_id,n,mae_z_cm,rmse_z_cm,mae_rel_pct
-small,a01,20,8.49,19.02,12.01
-small,b01,20,29.48,32.50,39.78
-small,b02,20,11.13,19.11,15.61
-small,bwl01,20,1.26,1.51,1.98
-small,c01,20,2.36,2.68,3.49
