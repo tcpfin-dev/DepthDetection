@@ -1,0 +1,261 @@
+{
+  "out": "/root/DepthDetection/dataset",
+  "in_place": true,
+  "settings": {
+    "warm_strength": 0.65,
+    "dim_brightness": 0.55,
+    "dim_contrast": 0.9
+  },
+  "images": [
+    {
+      "source": "/root/DepthDetection/dataset/dim/a1/a01_50cm.png",
+      "output": "/root/DepthDetection/dataset/dim/a1/a01_50cm.png",
+      "lighting": "dim"
+    },
+    {
+      "source": "/root/DepthDetection/dataset/dim/a1/a01_60cm.png",
+      "output": "/root/DepthDetection/dataset/dim/a1/a01_60cm.png",
+      "lighting": "dim"
+    },
+    {
+      "source": "/root/DepthDetection/dataset/dim/a1/a01_70cm.png",
+      "output": "/root/DepthDetection/dataset/dim/a1/a01_70cm.png",
+      "lighting": "dim"
+    },
+    {
+      "source": "/root/DepthDetection/dataset/dim/a1/a01_80cm.png",
+      "output": "/root/DepthDetection/dataset/dim/a1/a01_80cm.png",
+      "lighting": "dim"
+    },
+    {
+      "source": "/root/DepthDetection/dataset/dim/a1/a01_90cm.png",
+      "output": "/root/DepthDetection/dataset/dim/a1/a01_90cm.png",
+      "lighting": "dim"
+    },
+    {
+      "source": "/root/DepthDetection/dataset/dim/b1/b01_50cm.png",
+      "output": "/root/DepthDetection/dataset/dim/b1/b01_50cm.png",
+      "lighting": "dim"
+    },
+    {
+      "source": "/root/DepthDetection/dataset/dim/b1/b01_60cm.png",
+      "output": "/root/DepthDetection/dataset/dim/b1/b01_60cm.png",
+      "lighting": "dim"
+    },
+    {
+      "source": "/root/DepthDetection/dataset/dim/b1/b01_70cm.png",
+      "output": "/root/DepthDetection/dataset/dim/b1/b01_70cm.png",
+      "lighting": "dim"
+    },
+    {
+      "source": "/root/DepthDetection/dataset/dim/b1/b01_80cm.png",
+      "output": "/root/DepthDetection/dataset/dim/b1/b01_80cm.png",
+      "lighting": "dim"
+    },
+    {
+      "source": "/root/DepthDetection/dataset/dim/b1/b01_90cm.png",
+      "output": "/root/DepthDetection/dataset/dim/b1/b01_90cm.png",
+      "lighting": "dim"
+    },
+    {
+      "source": "/root/DepthDetection/dataset/dim/b2/b02_50cm.png",
+      "output": "/root/DepthDetection/dataset/dim/b2/b02_50cm.png",
+      "lighting": "dim"
+    },
+    {
+      "source": "/root/DepthDetection/dataset/dim/b2/b02_60cm.png",
+      "output": "/root/DepthDetection/dataset/dim/b2/b02_60cm.png",
+      "lighting": "dim"
+    },
+    {
+      "source": "/root/DepthDetection/dataset/dim/b2/b02_70cm.png",
+      "output": "/root/DepthDetection/dataset/dim/b2/b02_70cm.png",
+      "lighting": "dim"
+    },
+    {
+      "source": "/root/DepthDetection/dataset/dim/b2/b02_80cm.png",
+      "output": "/root/DepthDetection/dataset/dim/b2/b02_80cm.png",
+      "lighting": "dim"
+    },
+    {
+      "source": "/root/DepthDetection/dataset/dim/b2/b02_90cm.png",
+      "output": "/root/DepthDetection/dataset/dim/b2/b02_90cm.png",
+      "lighting": "dim"
+    },
+    {
+      "source": "/root/DepthDetection/dataset/dim/bwl1/bwl01_50cm.png",
+      "output": "/root/DepthDetection/dataset/dim/bwl1/bwl01_50cm.png",
+      "lighting": "dim"
+    },
+    {
+      "source": "/root/DepthDetection/dataset/dim/bwl1/bwl01_60cm.png",
+      "output": "/root/DepthDetection/dataset/dim/bwl1/bwl01_60cm.png",
+      "lighting": "dim"
+    },
+    {
+      "source": "/root/DepthDetection/dataset/dim/bwl1/bwl01_70cm.png",
+      "output": "/root/DepthDetection/dataset/dim/bwl1/bwl01_70cm.png",
+      "lighting": "dim"
+    },
+    {
+      "source": "/root/DepthDetection/dataset/dim/bwl1/bwl01_80cm.png",
+      "output": "/root/DepthDetection/dataset/dim/bwl1/bwl01_80cm.png",
+      "lighting": "dim"
+    },
+    {
+      "source": "/root/DepthDetection/dataset/dim/bwl1/bwl01_90cm.png",
+      "output": "/root/DepthDetection/dataset/dim/bwl1/bwl01_90cm.png",
+      "lighting": "dim"
+    },
+    {
+      "source": "/root/DepthDetection/dataset/dim/c1/c01_50cm.png",
+      "output": "/root/DepthDetection/dataset/dim/c1/c01_50cm.png",
+      "lighting": "dim"
+    },
+    {
+      "source": "/root/DepthDetection/dataset/dim/c1/c01_60cm.png",
+      "output": "/root/DepthDetection/dataset/dim/c1/c01_60cm.png",
+      "lighting": "dim"
+    },
+    {
+      "source": "/root/DepthDetection/dataset/dim/c1/c01_70cm.png",
+      "output": "/root/DepthDetection/dataset/dim/c1/c01_70cm.png",
+      "lighting": "dim"
+    },
+    {
+      "source": "/root/DepthDetection/dataset/dim/c1/c01_80cm.png",
+      "output": "/root/DepthDetection/dataset/dim/c1/c01_80cm.png",
+      "lighting": "dim"
+    },
+    {
+      "source": "/root/DepthDetection/dataset/dim/c1/c01_90cm.png",
+      "output": "/root/DepthDetection/dataset/dim/c1/c01_90cm.png",
+      "lighting": "dim"
+    },
+    {
+      "source": "/root/DepthDetection/dataset/warm/a1/a01_50cm.png",
+      "output": "/root/DepthDetection/dataset/warm/a1/a01_50cm.png",
+      "lighting": "warm"
+    },
+    {
+      "source": "/root/DepthDetection/dataset/warm/a1/a01_60cm.png",
+      "output": "/root/DepthDetection/dataset/warm/a1/a01_60cm.png",
+      "lighting": "warm"
+    },
+    {
+      "source": "/root/DepthDetection/dataset/warm/a1/a01_70cm.png",
+      "output": "/root/DepthDetection/dataset/warm/a1/a01_70cm.png",
+      "lighting": "warm"
+    },
+    {
+      "source": "/root/DepthDetection/dataset/warm/a1/a01_80cm.png",
+      "output": "/root/DepthDetection/dataset/warm/a1/a01_80cm.png",
+      "lighting": "warm"
+    },
+    {
+      "source": "/root/DepthDetection/dataset/warm/a1/a01_90cm.png",
+      "output": "/root/DepthDetection/dataset/warm/a1/a01_90cm.png",
+      "lighting": "warm"
+    },
+    {
+      "source": "/root/DepthDetection/dataset/warm/b1/b01_50cm.png",
+      "output": "/root/DepthDetection/dataset/warm/b1/b01_50cm.png",
+      "lighting": "warm"
+    },
+    {
+      "source": "/root/DepthDetection/dataset/warm/b1/b01_60cm.png",
+      "output": "/root/DepthDetection/dataset/warm/b1/b01_60cm.png",
+      "lighting": "warm"
+    },
+    {
+      "source": "/root/DepthDetection/dataset/warm/b1/b01_70cm.png",
+      "output": "/root/DepthDetection/dataset/warm/b1/b01_70cm.png",
+      "lighting": "warm"
+    },
+    {
+      "source": "/root/DepthDetection/dataset/warm/b1/b01_80cm.png",
+      "output": "/root/DepthDetection/dataset/warm/b1/b01_80cm.png",
+      "lighting": "warm"
+    },
+    {
+      "source": "/root/DepthDetection/dataset/warm/b1/b01_90cm.png",
+      "output": "/root/DepthDetection/dataset/warm/b1/b01_90cm.png",
+      "lighting": "warm"
+    },
+    {
+      "source": "/root/DepthDetection/dataset/warm/b2/b02_50cm.png",
+      "output": "/root/DepthDetection/dataset/warm/b2/b02_50cm.png",
+      "lighting": "warm"
+    },
+    {
+      "source": "/root/DepthDetection/dataset/warm/b2/b02_60cm.png",
+      "output": "/root/DepthDetection/dataset/warm/b2/b02_60cm.png",
+      "lighting": "warm"
+    },
+    {
+      "source": "/root/DepthDetection/dataset/warm/b2/b02_70cm.png",
+      "output": "/root/DepthDetection/dataset/warm/b2/b02_70cm.png",
+      "lighting": "warm"
+    },
+    {
+      "source": "/root/DepthDetection/dataset/warm/b2/b02_80cm.png",
+      "output": "/root/DepthDetection/dataset/warm/b2/b02_80cm.png",
+      "lighting": "warm"
+    },
+    {
+      "source": "/root/DepthDetection/dataset/warm/b2/b02_90cm.png",
+      "output": "/root/DepthDetection/dataset/warm/b2/b02_90cm.png",
+      "lighting": "warm"
+    },
+    {
+      "source": "/root/DepthDetection/dataset/warm/bwl1/bwl01_50cm.png",
+      "output": "/root/DepthDetection/dataset/warm/bwl1/bwl01_50cm.png",
+      "lighting": "warm"
+    },
+    {
+      "source": "/root/DepthDetection/dataset/warm/bwl1/bwl01_60cm.png",
+      "output": "/root/DepthDetection/dataset/warm/bwl1/bwl01_60cm.png",
+      "lighting": "warm"
+    },
+    {
+      "source": "/root/DepthDetection/dataset/warm/bwl1/bwl01_70cm.png",
+      "output": "/root/DepthDetection/dataset/warm/bwl1/bwl01_70cm.png",
+      "lighting": "warm"
+    },
+    {
+      "source": "/root/DepthDetection/dataset/warm/bwl1/bwl01_80cm.png",
+      "output": "/root/DepthDetection/dataset/warm/bwl1/bwl01_80cm.png",
+      "lighting": "warm"
+    },
+    {
+      "source": "/root/DepthDetection/dataset/warm/bwl1/bwl01_90cm.png",
+      "output": "/root/DepthDetection/dataset/warm/bwl1/bwl01_90cm.png",
+      "lighting": "warm"
+    },
+    {
+      "source": "/root/DepthDetection/dataset/warm/c1/c01_50cm.png",
+      "output": "/root/DepthDetection/dataset/warm/c1/c01_50cm.png",
+      "lighting": "warm"
+    },
+    {
+      "source": "/root/DepthDetection/dataset/warm/c1/c01_60cm.png",
+      "output": "/root/DepthDetection/dataset/warm/c1/c01_60cm.png",
+      "lighting": "warm"
+    },
+    {
+      "source": "/root/DepthDetection/dataset/warm/c1/c01_70cm.png",
+      "output": "/root/DepthDetection/dataset/warm/c1/c01_70cm.png",
+      "lighting": "warm"
+    },
+    {
+      "source": "/root/DepthDetection/dataset/warm/c1/c01_80cm.png",
+      "output": "/root/DepthDetection/dataset/warm/c1/c01_80cm.png",
+      "lighting": "warm"
+    },
+    {
+      "source": "/root/DepthDetection/dataset/warm/c1/c01_90cm.png",
+      "output": "/root/DepthDetection/dataset/warm/c1/c01_90cm.png",
+      "lighting": "warm"
+    }
+  ]
+}

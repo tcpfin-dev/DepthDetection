@@ -453,6 +453,38 @@ def load_ground_truth(dataset_root):
 # (``bottle01_d050_white`` -> b01, ``bowl01_...`` -> bwl01).
 _OBJECT_ID_WORDS = {"bottle": "b", "apple": "a", "cup": "c", "bowl": "bwl"}
 
+# Reverse of ``_OBJECT_ID_WORDS``: the short id prefix -> the COCO class it is.
+# ``a01`` -> apple, ``b01``/``b02`` -> bottle, ``bwl01`` -> bowl, ``c01`` -> cup.
+_OBJECT_ID_CLASS = {v: k for k, v in _OBJECT_ID_WORDS.items()}
+
+
+def expected_class_for(object_id):
+    """COCO class a dataset object id is supposed to be, or None if unknown.
+
+    ``b01`` -> ``bottle``, ``bwl01`` -> ``bowl``, ``bottle01`` -> ``bottle``.
+    Used so the evaluation only ever scores the object the folder is about: a
+    cup that happens to be in frame must never be scored as the subject.
+    """
+    if not object_id:
+        return None
+    match = re.match(r"([a-z]+)\d*$", str(object_id).strip().lower())
+    if not match:
+        return None
+    word = match.group(1)
+    return _OBJECT_ID_CLASS.get(_OBJECT_ID_WORDS.get(word, word))
+
+
+def object_id_for(image_path, gt=None):
+    """Dataset object id for an image: ground-truth column, else filename prefix."""
+    if gt:
+        for key in ("object_id", "bottle_id"):
+            val = (gt.get(key) or "").strip()
+            if val:
+                return val
+    match = re.match(r"([a-z]+\d+)_", Path(image_path).name.lower())
+    return match.group(1) if match else ""
+
+
 
 def load_object_sizes(dataset_root=None, quiet=False):
     """Return ``{object_id: {'w_m': W, 'h_m': H}}`` from a ``objects.txt``.
@@ -900,27 +932,64 @@ def print_results_table(results):
               f"{r['w_m'] * 100:>9.1f}{r['h_m'] * 100:>9.1f}{r['area_m2'] * 1e4:>12.1f}")
 
 
-def pick_middle(results, anchors):
-    """The detection whose box centre sits between the two anchor pixels.
+def _anchor_points(anchors):
+    """``[(u, v), ...]`` from ``"u,v,distance_m"`` anchor specs."""
+    points = []
+    for spec in anchors or []:
+        parts = str(spec).split(",")
+        try:
+            points.append((float(parts[0]), float(parts[1])))
+        except (ValueError, IndexError):
+            continue
+    return points
 
-    This is the object the dataset evaluates (``ImageCollection.md``: the middle
-    object always sits between cup1 and cup2). Falls back to the most confident
-    detection when there is no usable anchor pair or nothing sits between them.
+
+def _is_anchor_detection(result, points, slack=0.03):
+    """True when a detection IS one of the calibration anchors.
+
+    The user clicks a pixel on the reference cup, so that cup's bounding box
+    contains the click. Testing containment is exact and does not depend on box
+    size or on how far apart the objects are - unlike an x-range test, it cannot
+    accidentally swallow the subject object.
+    """
+    x1, y1, x2, y2 = result["x1"], result["y1"], result["x2"], result["y2"]
+    bw, bh = max(x2 - x1, 1.0), max(y2 - y1, 1.0)
+    for u, v in points:
+        if (x1 - slack * bw) <= u <= (x2 + slack * bw) and (y1 - slack * bh) <= v <= (y2 + slack * bh):
+            return True
+    return False
+
+
+def pick_middle(results, anchors, expected=None):
+    """The detection the dataset is actually measuring, or **None**.
+
+    Candidates are the detections that are neither calibration anchor, further
+    restricted to ``expected`` (a COCO class) when one is known. Among the rest,
+    prefer the object whose box centre sits between the two anchor x's (the
+    ``ImageCollection.md`` layout: the subject sits between cup1 and cup2) and
+    take the most confident of those.
+
+    Returning ``None`` is the important part: when the subject class was never
+    detected, the caller must VOID the row. Scoring whatever else happens to be
+    in frame is what silently attributed a cup's distance to the bottle/apple
+    and inflated every aggregate in the evaluation.
     """
     if not results:
         return None
-    us = []
-    for spec in anchors or []:
-        try:
-            us.append(float(spec.split(",")[0]))
-        except (ValueError, IndexError):
-            continue
+    points = _anchor_points(anchors)
+    candidates = [r for r in results if not _is_anchor_detection(r, points)]
+    if expected:
+        wanted = expected.strip().lower()
+        candidates = [r for r in candidates if str(r.get("label", "")).lower() == wanted]
+    if not candidates:
+        return None
+    us = [u for u, _ in points]
     if len(us) >= 2:
         lo, hi = min(us), max(us)
-        inside = [r for r in results if lo <= (r["x1"] + r["x2"]) / 2.0 <= hi]
+        inside = [r for r in candidates if lo <= (r["x1"] + r["x2"]) / 2.0 <= hi]
         if inside:
             return max(inside, key=lambda r: r["conf"])
-    return max(results, key=lambda r: r["conf"])
+    return max(candidates, key=lambda r: r["conf"])
 
 
 # --------------------------------------------------------------------------- #
@@ -967,16 +1036,7 @@ def eval_row(model, image_path, group, true_distance, lighting, picked, ground_t
     # Object id: ground-truth column first (``object_id`` or the older
     # ``bottle_id``), else the filename prefix (``bottle01_d050_white`` ->
     # ``bottle01``). Grouped per object because the set mixes bottle/cup/bowl.
-    row["object_id"] = ""
-    if gt:
-        for key in ("object_id", "bottle_id"):
-            if (gt.get(key) or "").strip():
-                row["object_id"] = gt[key].strip()
-                break
-    if not row["object_id"]:
-        match = re.match(r"([a-z]+\d+)_", Path(image_path).name.lower())
-        if match:
-            row["object_id"] = match.group(1)
+    row["object_id"] = object_id_for(image_path, gt)
 
     # W/H ground truth from objects.txt (measured once per object): used when
     # the ground_truth.csv row has no true_w_m / true_h_m of its own.
@@ -1033,9 +1093,15 @@ def print_predictions_table(rows, model_keys):
     print("========================================================================")
 
 
-def write_eval(out_dir, rows, model_keys):
-    """Write eval CSVs (per-image + grouped summaries) and print a summary table."""
+def write_eval(out_dir, rows, model_keys, voided=None):
+    """Write eval CSVs (per-image + grouped summaries) and print a summary table.
+
+    ``rows`` holds scored rows only. ``voided`` lists the (model, image) pairs
+    whose subject was never detected; they are excluded from every aggregate and
+    written to ``eval_voided.csv`` so nothing disappears silently.
+    """
     out_dir.mkdir(parents=True, exist_ok=True)
+    voided = voided or []
     fields = [
         "model", "filename", "object_id", "group", "anchor_file", "lighting",
         "distance_true_m",
@@ -1074,26 +1140,45 @@ def write_eval(out_dir, rows, model_keys):
     summary_path = out_dir / "eval_summary.csv"
     with summary_path.open("w", newline="") as fh:
         writer = csv.writer(fh)
-        writer.writerow(["model", "n_sized", "mae_z_cm", "rmse_z_cm", "mae_rel_pct"])
+        writer.writerow(["model", "n_sized", "n_voided", "mae_z_cm", "rmse_z_cm", "mae_rel_pct"])
         for model in model_keys:
+            n_void = sum(1 for v in voided if v["model"] == model)
             agg = _agg([r for r in rows if r["model"] == model])
             if agg:
                 n, mae, rmse, rel = agg
-                writer.writerow([model, n, f"{mae:.2f}", f"{rmse:.2f}",
+                writer.writerow([model, n, n_void, f"{mae:.2f}", f"{rmse:.2f}",
                                  "" if rel is None else f"{rel:.2f}"])
+            else:
+                # Nothing scorable left for this model: keep the row so the model
+                # does not silently vanish from the summary.
+                writer.writerow([model, 0, n_void, "", "", ""])
 
     write_grouped(out_dir / "eval_by_lighting.csv", "lighting", "lighting")
     write_grouped(out_dir / "eval_by_distance.csv", "distance_true_m", "distance_m")
     write_grouped(out_dir / "eval_by_object.csv", "object_id", "object_id")
 
-    print("\n==================== evaluation (middle object) ====================")
-    print(f"{'model':<8}{'n':>4}{'MAE Z(cm)':>12}{'RMSE Z(cm)':>12}{'MAE rel(%)':>12}")
+    if voided:
+        void_path = out_dir / "eval_voided.csv"
+        vfields = ["model", "filename", "object_id", "group", "lighting",
+                   "distance_true_m", "expected", "found", "reason"]
+        with void_path.open("w", newline="") as fh:
+            writer = csv.DictWriter(fh, fieldnames=vfields, extrasaction="ignore")
+            writer.writeheader()
+            for v in voided:
+                writer.writerow({k: v.get(k) for k in vfields})
+        print(f"[info] wrote     : {void_path}")
+
+    print("\n==================== evaluation (target object) ====================")
+    print(f"{'model':<8}{'n':>4}{'void':>5}{'MAE Z(cm)':>12}{'RMSE Z(cm)':>12}{'MAE rel(%)':>12}")
     for model in model_keys:
         agg = _agg([r for r in rows if r["model"] == model])
+        n_void = sum(1 for v in voided if v["model"] == model)
         if agg:
             n, mae, rmse, rel = agg
-            print(f"{model:<8}{n:>4}{mae:>12.2f}{rmse:>12.2f}"
+            print(f"{model:<8}{n:>4}{n_void:>5}{mae:>12.2f}{rmse:>12.2f}"
                   f"{('' if rel is None else f'{rel:.1f}'):>12}")
+        else:
+            print(f"{model:<8}{0:>4}{n_void:>5}{'-':>12}{'-':>12}{'-':>12}")
 
     distances = sorted({r["distance_true_m"] for r in rows if r["distance_true_m"]})
     if distances and len(model_keys) >= 1:
@@ -1232,6 +1317,7 @@ def run_batch(args, model_keys):
     yolo_model = make_yolo(args.yolo)
 
     rows = []
+    voided = []
     skipped = 0
     for model_key in model_keys:
         t0 = time.perf_counter()
@@ -1263,7 +1349,28 @@ def run_batch(args, model_keys):
                     skipped += 1
                     continue
                 save_outputs(out_dir, img.stem, image, rec["depth"], rec["results"], rec["meta"])
-                picked = pick_middle(rec["results"], anchors)
+                # Only ever score the object this folder is about. ``--target``
+                # wins when given, else the class is inferred from the object id
+                # (a01 -> apple, b01/b02 -> bottle, bwl01 -> bowl, c01 -> cup).
+                object_id = object_id_for(img, ground_truth.get(f"{lighting}/{img.name}")
+                                          or ground_truth.get(img.name))
+                expected = args.target or expected_class_for(object_id)
+                picked = pick_middle(rec["results"], anchors, expected)
+                if picked is None:
+                    # The subject was never detected. VOID the row instead of
+                    # scoring some other object's distance as if it were the
+                    # subject - that is what inflated MAE/RMSE across the board.
+                    found = ", ".join(sorted({str(r["label"]) for r in rec["results"]})) or "nothing"
+                    reason = (f"no '{expected}' detected" if expected
+                              else "no non-anchor object detected")
+                    print(f"[void] {img.name} [{model_key}]: {reason} (found: {found})"
+                          f" - voided, not scored", flush=True)
+                    voided.append({
+                        "model": model_key, "filename": img.name, "object_id": object_id,
+                        "group": group, "lighting": lighting, "distance_true_m": true_distance,
+                        "expected": expected or "", "found": found, "reason": reason,
+                    })
+                    continue
                 row = eval_row(model_key, img, group,
                                None if args.no_eval else true_distance, lighting, picked,
                                ground_truth, anchor_file, object_sizes)
@@ -1287,10 +1394,16 @@ def run_batch(args, model_keys):
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
 
-    if not rows:
+    if not rows and not voided:
         sys.exit("Nothing could be sized; check the anchors, --conf and the dataset.")
 
-    if args.no_eval or not has_truth(rows):
+    if not rows:
+        # Every subject was voided: still write the report so the voided rows are
+        # on record instead of the run failing with "nothing could be sized".
+        print(f"\n[warn] nothing scored: all {len(voided)} (model, image) pair(s) were voided "
+              f"because the subject object was never detected.")
+        write_eval(args.out, rows, model_keys, voided)
+    elif args.no_eval or not has_truth(rows):
         print_predictions_table(rows, model_keys)
         if args.no_eval:
             print("[info] --no-eval: predictions only; no evaluation written.")
@@ -1298,8 +1411,9 @@ def run_batch(args, model_keys):
             print("[info] no ground truth to compare against (no ground_truth.csv and no "
                   "distance in the filenames); printed predictions only.")
     else:
-        write_eval(args.out, rows, model_keys)
-    print(f"\n[info] sized    : {len(rows)} (model, image) pairs; skipped {skipped}")
+        write_eval(args.out, rows, model_keys, voided)
+    print(f"\n[info] sized    : {len(rows)} (model, image) pairs; skipped {skipped}; "
+          f"voided {len(voided)} (subject never detected - excluded from the evaluation)")
     return 0
 
 
