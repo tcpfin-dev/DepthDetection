@@ -34,7 +34,7 @@ anchors so the calibration interpolates instead of extrapolates.
 
 Anchors live **per object folder** (`dataset/<lighting>/<object>/anchor.txt`) and
 are **required**: each object folder must contain one, an image never inherits an
-anchor.txt from a parent folder, and the pipeline / `label_anchors.py` skip a
+anchor.txt from a parent folder, and the pipeline / `preprocessing.py label` skip a
 folder that has none (warning once, listing the folders) instead of guessing.
 
 ---
@@ -117,6 +117,29 @@ Measure each object **once**, before shooting:
 Re-use those numbers for every shot of that object. Do **not** re-measure per
 image.
 
+Record the measured sizes once in `dataset/objects.txt`, which the pipeline uses
+as its W/H ground truth (the `target objects:` section):
+
+```text
+target objects:
+a01 W:7.5cm,H:7cm
+b01 W:6.2cm,H:24cm
+b02 W:7.5cm,H:25cm
+bwl01 W:12cm,H:6cm
+c01 W:12cm, H:8cm
+
+anchors
+cups W:12cm, H:8cm
+cups without handle W:8cm, H:8cm
+```
+
+The `anchors` section is **not** ground truth - it is the two reference cups'
+size, kept for reference only. Note which pair appears where: **only the b01
+folders are shot with the handle-less cups** (`cups without handle W:8cm,H:8cm`);
+every other object folder uses the normal with-handle cups (`cups
+W:12cm,H:8cm`). Both are the 0.40 / 1.00 m calibration constants of their folder,
+never a scored object.
+
 ---
 
 ## 4. Lighting conditions (4 real modes)
@@ -132,7 +155,12 @@ This is the axis that takes the set from 25 to 100:
 | `nv` | light **off** -> camera night vision | IR-illuminated, near-monochrome |
 
 `warm` is the **real** version of a warm-cast augmentation, which is why no
-colour filter is needed anywhere in this plan.
+colour filter is needed anywhere in this plan. In practice the phone's auto
+exposure and white balance flatten the two hardest modes - `warm` frames come
+back nearly as neutral as `white`, and `dim` frames only slightly darker - so
+`python preprocessing.py adjust` rewrites every `warm` frame yellower and every
+`dim` frame darker into `adjusteddataset/` (same geometry, each `anchor.txt`
+copied along) when a harder contrast is wanted. `white` and `nv` are untouched.
 
 **`dim` and `nv` are different conditions - do not merge them.** `dim` is the
 real low-light capture (the proposal's "low-contrast" case) and stays in the
@@ -202,7 +230,7 @@ cup2 anchor (1270, 577, 100cm)
 7. Verify the rig by running the pipeline once (Section 10) and confirming the
    two cups come back at 0.40 m and 1.00 m. If they do not, that folder's anchor
    pixels are in the wrong place - fix them now, before shooting the rest of the
-   folder. `python label_anchors.py` renders the anchors into
+   folder. `python preprocessing.py label` renders the anchors into
    `anchordataset/<same path>/` so you can see where they actually land. Repeat
    the check once per lighting mode (Section 4): a mode that uses a different
    lens, an in-app crop, or a different output resolution shifts the anchor
@@ -431,10 +459,11 @@ mode) or in `notes`. Name the files as `<parent>_<filter>.jpg`, e.g.
 - [x] Per-folder anchors: every shot folder carries its own `anchor.txt`
       (`dataset/<lighting>/<object>/anchor.txt`) and the pipeline resolves the
       nearest one per image, so one re-shot scene cannot skew the rest.
-      `label_anchors.py` renders them into `anchordataset/` for a visual check.
+      `preprocessing.py label` renders them into `anchordataset/` for a visual check.
 - [x] Batch mode in `test_pipeline.py` to process a whole dataset folder in one
       run: `--dataset <root>` scans recursively, auto-discovers each folder's
-      `anchor.txt`, and `--depth-model all` runs small + base + large. Evaluation
+      `anchor.txt`, and `--depth-model all` runs every model family (Depth
+      Anything V2 small + base + large, MiDaS, Marigold). Evaluation
       is written alongside: `eval_per_image.csv`, `eval_summary.csv`,
       `eval_by_lighting.csv`, `eval_by_distance.csv`, `eval_by_object.csv`
       (MAE / RMSE of Z on the middle object), so no separate `eval_accuracy.py`

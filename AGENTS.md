@@ -80,21 +80,56 @@ python test_pipeline.py --dataset dataset --depth-model all --calib inverse
 python test_pipeline.py --dataset dataset/white --depth-model large --conf 0.2
 python test_pipeline.py --dataset dataset --yolo-size medium --calib inverse
 
-# Anchors: click them instead of reading pixels off in Paint
-python pick_anchors.py                          # per-folder anchor.txt writer
-python pick_anchors.py --overwrite --match '*/b1'
-python label_anchors.py                         # draw them back onto the images
+# Anchors (one script, three modes): click them instead of reading pixels off
+# in Paint, then draw them back to check them
+python preprocessing.py                         # pick = per-folder anchor.txt writer
+python preprocessing.py pick --overwrite --match '*/b1'
+python preprocessing.py label                   # draw them back onto the images
+
+# Lighting: warm -> yellower, dim -> darker, because the phone's auto exposure
+# and white balance flattened both
+python preprocessing.py adjust                  # dataset/ -> adjusteddataset/
+python preprocessing.py adjust --only warm --warm-strength 0.9
+python preprocessing.py adjust --in-place       # rewrite dataset/ itself
 ```
+
+`colab_marigold.py` is the Colab depth runner: one file, **no arguments**, no
+`test_pipeline.py` dependency. Upload it with the `dataset/` folder beside it
+(`/content`) and run `!python colab_marigold.py`; the only input it looks for is
+that `dataset/` next to the script (no archives, no Drive mount, no fallback to
+cwd images - a missing folder is a hard error). It installs
+`diffusers`/`accelerate` if missing, loads `prs-eth/marigold-depth-v1-0` (fp16 on
+a GPU), runs it over every image, writes
+`<out>/<lighting>/<object>/<image>_depth.npy` + `_depth.png` (grayscale) +
+`_depth_color.png` (magma) + `_photo.png` (thumb) into `marigold_outputs/`, then
+renders and inline-displays a `photo | depth` montage (`preview.png`) and
+`summary.json`. Tuning lives in the constants at the top of the file
+(`MODEL_ID` / `STEPS` / `ENSEMBLE` / `RESOLUTION` / `OUT_DIR`), not in flags, and
+existing `_depth.npy` files are reused on a re-run.
 
 Anchors live **per object folder**: `dataset/<lighting>/<object>/anchor.txt`, and
 there is no inheritance - an image only ever uses the `anchor.txt` sitting in its
-own folder. `pick_anchors.py` writes them: it walks the folders that contain
+own folder. `preprocessing.py pick` writes them: it walks the folders that contain
 images, serves one reference frame per folder to a local browser page, and turns
 two clicks into `cup1 anchor (636, 663, 40cm)` / `cup2 anchor (1097, 605, 100cm)`
 lines. Wheel-zoom for pixel accuracy, `--names` / `--dist-cm` for other anchors,
 `--overwrite` to redo folders that already have the file, `--preview` to run
-`label_anchors.py` afterwards. It is the inverse of `label_anchors.py`, which
-reads the same file and draws the markers back onto every image. Batch mode
+`preprocessing.py label` afterwards. That `label` mode is the inverse: it reads
+the same file and draws the markers back onto every image (into `anchordataset/`
+by default, mirroring the dataset).
+
+`preprocessing.py adjust` exists because the phone's auto exposure and white
+balance flatten the lighting modes: real `warm` frames come back almost as
+neutral as `white`, and real `dim` frames are only slightly darker. It rewrites
+every `warm` frame with a stronger yellow cast (`--warm-strength`, default 0.65)
+and every `dim` frame darker and flatter (`--dim-brightness` 0.55,
+`--dim-contrast` 0.9), and leaves `white` and `nv` alone. The lighting is read
+from the folder name or a filename token (`_warm`, `_dim`), the output mirrors
+`--dataset` into `adjusteddataset/` with the same filenames, and each folder's
+`anchor.txt` is copied along because pixel geometry is untouched - so
+`test_pipeline.py --dataset adjusteddataset` works immediately. `--in-place`
+rewrites the dataset itself, `--only warm|dim` narrows what is touched,
+`--dry-run` only prints the plan. Batch mode
 (`--dataset <root>`) walks the folder recursively, checks
 each object folder for that file, and a folder without one is **skipped as a
 whole** and reported once with a reminder to add it (a half-shot dataset still
@@ -111,12 +146,47 @@ small objects (apple, b02 bottle) far more reliably than `nano`, while `large`
 has not consistently helped.
 The evaluation is computed on the
 **middle object** (the detection whose box centre lies between the two anchor
-pixels), with MAE / RMSE of Z in cm and the relative %; ground truth comes from a
-`ground_truth.csv` (Section 8 schema) if one sits next to the dataset, otherwise
+pixels), with MAE / RMSE of Z in cm and the relative %; ground truth comes from
+a `ground_truth.csv` (Section 8 schema) if one sits next to the dataset, otherwise
 from the filename (`..._50cm` / `..._d050_...`) and the lighting folder/token.
 Each image's `_results.json` meta records `calibration.anchor_file`, and
 `eval_per_image.csv` has an `anchor_file` column, so a per-folder calibration is
 always traceable.
+
+**Object sizes (W/H ground truth) come from `dataset/objects.txt`.** It is the
+measure-once table for the whole set, parsed by `load_object_sizes()`:
+
+```text
+target objects:
+a01 W:7.5cm,H:7cm
+b01 W:6.2cm,H:24cm
+b02 W:7.5cm,H:25cm
+bwl01 W:12cm,H:6cm
+c01 W:12cm, H:8cm
+
+anchors
+cups W:12cm, H:8cm
+cups without handle W:8cm, H:8cm
+```
+
+Only the `target objects:` section is read; those W/H become `true_w_m` /
+`true_h_m` in `eval_per_image.csv` (and the `w_err_cm` / `h_err_cm` columns +
+the `[W+1.1/H+0.8cm]` tag on each per-image line). Values from a
+`ground_truth.csv` row still win when that row carries its own `true_w_m` /
+`true_h_m`. The lookup is keyed by `object_id` (from the CSV row or the filename
+prefix), accepting both the short id (`c01`) and the spelled-out prefix
+(`cup01` / `bottle01` -> `b01`, `bowl01` -> `bwl01`). The file is found in the
+dataset folder, or up to three of its ancestors, so `--dataset dataset/white/c1`
+still picks up `dataset/objects.txt`.
+
+**The `anchors` section is calibration, not ground truth, and is skipped.** The
+reference cups are the fixed 0.40 / 1.00 m constants in each folder's
+`anchor.txt`. Note the special case: **only the b01 folders use the handle-less
+anchor cup pair** (`cups without handle W:8cm, H:8cm`); every other object folder
+(the a1 / b2 / bwl1 / c1 scenes) uses the normal with-handle cups
+(`cups W:12cm, H:8cm`). Either way they are just the two calibration anchors at
+0.40 / 1.00 m, so they are never scored objects and must not be added to the
+target table.
 
 Ground truth is **optional** - without it the batch still sizes every image and
 prints the model outputs (Z / W / H); it never errors. `--no-eval` skips the
