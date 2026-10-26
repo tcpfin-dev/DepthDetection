@@ -24,10 +24,10 @@
 Low-Contrast Environments}
 
 \author{
-\IEEEauthorblockN{Author Name}
-\IEEEauthorblockA{Department, University\\
-City, Country\\
-author@university.edu}
+\IEEEauthorblockN{Huang JunLin}
+\IEEEauthorblockA{School of Engineering\\
+Nanyang Polytechnic\\
+Singapore}
 }
 
 \maketitle
@@ -45,7 +45,7 @@ Depth Anything V2 Large is best, with 3.63~cm mean absolute distance error
 (4.9\,\%), 9.3\,\% / 4.9\,\% relative width / height error and no gross failures,
 against 9.38~cm for MiDaS. The aggregate hides a strongly non-uniform error
 profile: 61\,\% of the total absolute distance error comes from one tall, thin,
-transparent bottle, and that error is a one-directional over-estimation almost
+clear bottle, and that error is a one-directional over-estimation almost
 entirely explained by where depth is sampled inside the box; sampling the
 ground-contact point instead of the box interior cuts it by 40\,\% at no cost.
 Night-time infrared capture is the second failure mode, and its error tracks
@@ -194,9 +194,9 @@ metric, and counted in the summary.
 The dataset contains 100 images: five objects $\times$ five distances (0.50 to
 0.90~m in 10~cm steps) $\times$ four lighting conditions. The objects, with
 tape-measured $W\times H$, are a bowl (12.0$\times$6.0~cm), a mug
-(12.0$\times$8.0~cm), an apple (7.5$\times$7.0~cm), a short bottle
-(7.5$\times$25.0~cm) and a tall, narrow, transparent bottle
-(6.2$\times$24.0~cm). The lighting modes are \emph{white}, evenly lit and used as
+(12.0$\times$8.0~cm), an apple (7.5$\times$7.0~cm), a short, blue,
+translucent bottle (7.5$\times$25.0~cm) and a tall, narrow, clear
+bottle (6.2$\times$24.0~cm). The lighting modes are \emph{white}, evenly lit and used as
 reference; \emph{warm}, a strong yellow cast; \emph{dim}, low and flat; and
 \emph{nv}, lights off with an active-infrared illuminator, producing a
 near-monochrome frame. The camera is locked on a tripod and no capture parameter
@@ -315,9 +315,11 @@ The object panel of Table~\ref{tab:groups} is the most useful view of the
 results. Broad, squat, opaque objects are effectively solved: bowl and mug sit at
 1.2--2.4~cm and under 4\,\% for every Depth Anything size, comfortably usable for
 sizing, and the apple is similarly easy \emph{when detected} (1.57~cm for
-Small). Thin objects are not: the tall bottle alone is 61\,\% of all absolute distance
-error (pooled over the Depth Anything family), the short bottle 17.7\,\% and the
-three compact objects the remaining 21\,\% of it.
+Small). The two bottles are the exception, and they are the only non-opaque
+objects: the tall one clear, the short one blue-tinted and translucent. Together they
+supply 78.7\,\% of all absolute distance error (pooled over the Depth Anything
+family): 61\,\% from the tall bottle and 17.7\,\% from the short one, against
+21\,\% for the three compact, opaque objects.
 
 This resolves an apparent paradox. Large wins overall, but on the four objects
 other than the tall bottle the ranking inverts: Small achieves 1.95~cm against
@@ -326,8 +328,8 @@ at night. Since Small's weights are 99~MB against Large's 1.34~GB, a factor of
 13, this is a deployment finding rather than a footnote: for near-range sizing of
 compact objects the smallest model suffices. MiDaS has an inverted object profile
 rather than a uniformly worse one: by far the worst on the short bottle
-(20.23~cm, 29\,\%) where Depth Anything is comfortable, yet the least biased on
-the tall bottle.
+(20.23~cm, 29\,\%) where Depth Anything stays at 2.5--6.2~cm, yet the least
+biased on the tall bottle.
 
 \subsection{Width and Height Accuracy}
 The deliverable is dimensions, not distance, and height is roughly twice as
@@ -365,7 +367,7 @@ here supports sizing beyond 1~m without closer anchor spacing.
 \centering
 \includegraphics[width=\columnwidth]{fig2_qualitative.png}
 \caption{Two frames with Depth Anything V2 Large: a mug at 0.50~m in white light
-(top) and the tall transparent bottle at 0.90~m under infrared (bottom). Columns
+(top) and the tall clear bottle at 0.90~m under infrared (bottom). Columns
 are the RGB input, the relative-depth map (magma, brighter = closer) and the
 sized output. The mug is sized to within 1.1~cm; the bottle, which barely
 separates from the background in the depth map, is read 16.8~cm too far, and its
@@ -383,7 +385,12 @@ direction, reading a 0.90~m bottle at roughly 1.32~m.
 
 The cause is where depth is sampled, not the depth model; Figure~\ref{fig:qualitative}
 shows the case, where the bottle barely separates from the background in the
-depth map while the opaque mug pops out. A 24~cm-tall,
+depth map while the opaque mug pops out. The non-opaque material is a shared
+handicap, since the short bottle is translucent and still carries 17.7\,\% of the
+total error, but it does not set the magnitude: that bottle stays at 2.5--6.2~cm
+for the Depth Anything models, while the tall, colorless one reaches
+8.9--20.1~cm.
+The difference is silhouette and box tightness. A 24~cm-tall,
 6.2~cm-wide object inside a slightly loose box picks up background columns on
 both sides; background is farther, so a median over the interior drifts outward.
 The tall bottle is also the loosest detection in the set, with confidence down to
@@ -443,7 +450,7 @@ dimensions from one RGB frame with useful accuracy: Depth Anything V2 Large
 reaches 3.63~cm mean distance error and 9.3\,\% / 4.9\,\% width / height error
 across 100 images spanning four lighting conditions, with no gross failures. The
 aggregate alone is misleading: bowl and mug sizing is essentially solved at
-1--2\,\%, while one tall transparent bottle contributes 61\,\% of the total
+1--2\,\%, while one tall clear bottle contributes 61\,\% of the total
 error, and that error is a signed, distance-growing bias caused by sampling
 inside a loose box rather than by a depth failure. Night-time behaviour is
 limited by clipped highlights, and honest evaluation requires voiding rows where
