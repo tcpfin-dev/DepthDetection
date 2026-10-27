@@ -1,8 +1,8 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026/Arch Linux) (preloaded format=pdflatex 2026.10.26)  26 OCT 2026 09:55
+This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026/Arch Linux) (preloaded format=pdflatex 2026.10.26)  27 OCT 2026 11:45
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
-**paper.tex
+**paper
 (./paper.tex
 LaTeX2e <2025-11-01>
 L3 programming layer <2026-01-19>
@@ -469,12 +469,12 @@ File: figs/fig2_qualitative.png Graphic file (type png)
 Package pdftex.def Info: figs/fig2_qualitative.png  used on input line 368.
 (pdftex.def)             Requested size: 252.0pt x 176.36217pt.
  [4 <./figs/fig3_distance.png> <./figs/fig2_qualitative.png>]
-Underfull \hbox (badness 1418) in paragraph at lines 492--495
+Underfull \hbox (badness 1418) in paragraph at lines 485--488
 []\OT1/ptm/m/n/8 B. Ke, A. Obukhov, S. Huang, N. Met-zger, R. C. Daudt, and
  []
 
 
-Underfull \hbox (badness 4291) in paragraph at lines 497--500
+Underfull \hbox (badness 4291) in paragraph at lines 490--493
 []\OT1/ptm/m/n/8 S. F. Bhat, R. Birkl, D. Wofk, P. Wonka, and M. M[]uller,
  []
 
@@ -497,7 +497,7 @@ LaTeX2e <2025-11-01>
 L3 programming layer <2026-01-19>
  ***********
 Package rerunfilecheck Info: File `paper.out' has not changed.
-(rerunfilecheck)             Checksum: C49257C865E0A223008F108B2C02F0DB;3633.
+(rerunfilecheck)             Checksum: C0F122BBD0DB33948A07FF48BE743C2C;3544.
  ) 
 Here is how much of TeX's memory you used:
  10789 strings out of 469515
@@ -506,7 +506,7 @@ Here is how much of TeX's memory you used:
  39268 multiletter control sequences out of 15000+600000
  667914 words of font info for 120 fonts, out of 8000000 for 9000
  14 hyphenation exceptions out of 8191
- 75i,9n,79p,595b,450s stack positions out of 10000i,1000n,20000p,200000b,200000s
+ 75i,9n,79p,591b,450s stack positions out of 10000i,1000n,20000p,200000b,200000s
 </usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi10.pfb></usr/share/
 texmf-dist/fonts/type1/public/amsfonts/cm/cmmi7.pfb></usr/share/texmf-dist/font
 s/type1/public/amsfonts/cm/cmmi8.pfb></usr/share/texmf-dist/fonts/type1/public/
@@ -519,7 +519,7 @@ cmsy8.pfb></usr/share/texmf-dist/fonts/type1/urw/courier/ucrr8a.pfb></usr/share
 /texmf-dist/fonts/type1/urw/times/utmb8a.pfb></usr/share/texmf-dist/fonts/type1
 /urw/times/utmbi8a.pfb></usr/share/texmf-dist/fonts/type1/urw/times/utmr8a.pfb>
 </usr/share/texmf-dist/fonts/type1/urw/times/utmri8a.pfb>
-Output written on paper.pdf (5 pages, 714891 bytes).
+Output written on paper.pdf (5 pages, 712850 bytes).
 PDF statistics:
  279 PDF objects out of 1000 (max. 8388607)
  232 compressed objects within 3 object streams
