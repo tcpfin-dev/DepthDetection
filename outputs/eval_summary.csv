@@ -1,0 +1,6 @@
+model,n_sized,n_voided,mae_z_cm,rmse_z_cm,mae_rel_pct
+small,95,5,5.78,10.71,8.00
+base,95,5,5.35,7.83,7.40
+large,95,5,3.63,5.15,4.95
+midas,95,5,9.38,15.91,13.14
+marigold,95,5,9.53,17.18,13.64

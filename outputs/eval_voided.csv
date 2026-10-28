@@ -1,0 +1,26 @@
+model,filename,object_id,group,lighting,distance_true_m,expected,found,reason
+small,a01_50cm.png,a01,nv_a1,nv,0.5,apple,cup,no 'apple' detected
+small,a01_60cm.png,a01,nv_a1,nv,0.6,apple,"cup, knife",no 'apple' detected
+small,a01_70cm.png,a01,nv_a1,nv,0.7,apple,cup,no 'apple' detected
+small,a01_80cm.png,a01,nv_a1,nv,0.8,apple,"bowl, cup",no 'apple' detected
+small,a01_90cm.png,a01,nv_a1,nv,0.9,apple,"cup, person",no 'apple' detected
+base,a01_50cm.png,a01,nv_a1,nv,0.5,apple,cup,no 'apple' detected
+base,a01_60cm.png,a01,nv_a1,nv,0.6,apple,"cup, knife",no 'apple' detected
+base,a01_70cm.png,a01,nv_a1,nv,0.7,apple,cup,no 'apple' detected
+base,a01_80cm.png,a01,nv_a1,nv,0.8,apple,"bowl, cup",no 'apple' detected
+base,a01_90cm.png,a01,nv_a1,nv,0.9,apple,"cup, person",no 'apple' detected
+large,a01_50cm.png,a01,nv_a1,nv,0.5,apple,cup,no 'apple' detected
+large,a01_60cm.png,a01,nv_a1,nv,0.6,apple,"cup, knife",no 'apple' detected
+large,a01_70cm.png,a01,nv_a1,nv,0.7,apple,cup,no 'apple' detected
+large,a01_80cm.png,a01,nv_a1,nv,0.8,apple,"bowl, cup",no 'apple' detected
+large,a01_90cm.png,a01,nv_a1,nv,0.9,apple,"cup, person",no 'apple' detected
+midas,a01_50cm.png,a01,nv_a1,nv,0.5,apple,cup,no 'apple' detected
+midas,a01_60cm.png,a01,nv_a1,nv,0.6,apple,"cup, knife",no 'apple' detected
+midas,a01_70cm.png,a01,nv_a1,nv,0.7,apple,cup,no 'apple' detected
+midas,a01_80cm.png,a01,nv_a1,nv,0.8,apple,"bowl, cup",no 'apple' detected
+midas,a01_90cm.png,a01,nv_a1,nv,0.9,apple,cup,no 'apple' detected
+marigold,a01_50cm.png,a01,nv_a1,nv,0.5,apple,cup,no 'apple' detected
+marigold,a01_60cm.png,a01,nv_a1,nv,0.6,apple,"cup, knife",no 'apple' detected
+marigold,a01_70cm.png,a01,nv_a1,nv,0.7,apple,cup,no 'apple' detected
+marigold,a01_80cm.png,a01,nv_a1,nv,0.8,apple,"bowl, cup",no 'apple' detected
+marigold,a01_90cm.png,a01,nv_a1,nv,0.9,apple,"cup, person",no 'apple' detected

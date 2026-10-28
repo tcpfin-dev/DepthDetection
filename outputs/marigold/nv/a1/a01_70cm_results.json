@@ -1,0 +1,67 @@
+{
+  "meta": {
+    "image": "dataset/nv/a1/a01_70cm.png",
+    "width": 1920,
+    "height": 1080,
+    "fx": 1506.8981540327907,
+    "fy": 1506.8981540327907,
+    "cx": 960.0,
+    "cy": 540.0,
+    "intrinsics": "hfov",
+    "intrinsics_args": {
+      "focal_mm": null,
+      "sensor_width_mm": null,
+      "dfov": null,
+      "hfov": 65.0
+    },
+    "depth_model": "prs-eth/marigold-depth-v1-0",
+    "depth_seed": 42,
+    "marigold_args": {
+      "steps": 10,
+      "ensemble": 1,
+      "resolution": 768
+    },
+    "yolo": "yolov8m.pt",
+    "calibration": {
+      "mode": "affine fit on 2 anchors",
+      "model": "affine",
+      "alpha": 4.6184637068358,
+      "beta": 0.11374207188160639,
+      "object_height_m": null,
+      "distance_m": null,
+      "anchor_file": "/root/DepthDetection/dataset/nv/a1/anchor.txt",
+      "anchors": [
+        "806,618,0.4",
+        "1320,555,1"
+      ]
+    }
+  },
+  "results": [
+    {
+      "label": "cup",
+      "conf": 0.9266788959503174,
+      "x1": 564.651611328125,
+      "y1": 491.5020446777344,
+      "x2": 960.1883544921875,
+      "y2": 771.1356811523438,
+      "depth": 0.06256103515625,
+      "z_m": 0.40267794221282555,
+      "w_m": 0.10569654052638897,
+      "h_m": 0.07472455720231425,
+      "area_m2": 0.007898127188650877
+    },
+    {
+      "label": "cup",
+      "conf": 0.6915229558944702,
+      "x1": 1245.03173828125,
+      "y1": 485.92474365234375,
+      "x2": 1427.022705078125,
+      "y2": 616.45947265625,
+      "depth": 0.19580078125,
+      "z_m": 1.018040873854827,
+      "w_m": 0.12295073981990146,
+      "h_m": 0.088187572085013,
+      "area_m2": 0.010842727230773239
+    }
+  ]
+}

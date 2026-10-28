@@ -22,13 +22,6 @@ dist/
 .coverage
 htmlcov/
 
-# Pipeline outputs (depth maps, annotated overlays, results json/csv).
-# Ignore the contents but keep the empty directory tracked via .gitkeep.
-outputs/*
-!outputs/.gitkeep
-test/outputs/*
-!test/outputs/.gitkeep
-
 # Downloaded model weights and caches
 *.pt
 *.pth
