@@ -112,8 +112,11 @@ Z(u,v) = \frac{1}{\alpha \cdot D_{\text{rel}}(u,v) + \beta}$$
 $\alpha$ and $\beta$ are found the same way (least-squares over the tape-measured
 anchors); only the target of the regression changes from $Z$ to $1/Z$.
 
-Implementation: `test_pipeline.py --calib inverse`. The default, `--calib
-affine`, keeps the linear-in-$Z$ form of Phase 1 above.
+Implementation: `test_pipeline.py --calib inverse`, which is the default. The
+available `--calib affine` keeps the linear-in-$Z$ form of Phase 1 above and is
+the native basis for a model that predicts direct depth (Marigold); on this
+dataset it is clearly worse for the Depth Anything V2 / MiDaS family and within
+measurement noise for Marigold (see the calibration ablation in the paper).
 
 Measured on a real capture (bottle on a counter, anchors at 0.2 m and 1.0 m):
 

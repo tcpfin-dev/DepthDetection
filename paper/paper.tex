@@ -152,8 +152,44 @@ Z(u,v) = \frac{1}{\alpha\,D(u,v) + \beta},
 \label{eq:inverse}
 \end{equation}
 which is exact for a model whose output is proportional to disparity and
-interpolates correctly between anchors. Both forms are implemented; all results
-here use \eqref{eq:inverse}.
+interpolates correctly between anchors. Table~\ref{tab:calib} isolates the choice:
+on 25 white-light frames (five objects at 0.50--0.90~m) the two forms see
+identical boxes, anchors, detector and depth sampling, and only the fitted curve
+differs. For the four regression heads the linear form is not merely worse, it
+fails in a structured way: its mean signed error equals its MAE row for row,
+i.e.\ \emph{every} prediction is long, because a straight line pinned to two
+inverse-depth anchors lies above the true curve everywhere between them. The
+penalty is 2.7--3.6$\times$ in MAE for the Depth Anything V2 sizes (Large:
+3.42 to 12.42~cm) and 1.35$\times$ for MiDaS. Marigold is the sole exception
+(6.32 against 6.39~cm), which is what its affine-invariant, direct-depth output
+predicts; we therefore keep it under the same fit and flag the parity in
+Section~\ref{sec:limits} rather than re-tuning one model. All results below use
+\eqref{eq:inverse}, which is also the default of the implementation.
+
+\begin{table}[t]
+\centering
+\caption{Calibration-form ablation on the white-light set (n$=$25 per cell, five
+objects, 0.50--0.90~m, YOLOv8m at 0.25, box-median sampling). AF: linear in depth
+\eqref{eq:affine}; INV: linear in disparity \eqref{eq:inverse}. Every affine row
+has bias $=$ MAE, i.e.\ all of its errors share one sign.}
+\label{tab:calib}
+\footnotesize
+\setlength{\tabcolsep}{3.5pt}
+\begin{tabular}{lccccr}
+\toprule
+ & \multicolumn{2}{c}{AF \eqref{eq:affine}} & \multicolumn{2}{c}{INV \eqref{eq:inverse}} & \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}
+Model & MAE & rel & MAE & rel & AF/INV\\
+      & (cm) & (\%) & (cm) & (\%) & MAE\\
+\midrule
+DA-V2-S & 12.16 & 18.1 & \textbf{4.45} & \textbf{4.5} & 2.73\\
+DA-V2-B & 13.29 & 20.1 & \textbf{4.73} & \textbf{6.0} & 2.81\\
+DA-V2-L & 12.42 & 18.7 & \textbf{3.42} & \textbf{4.2} & 3.63\\
+MiDaS & 16.58 & 25.5 & \textbf{12.32} & \textbf{15.8} & 1.35\\
+Marigold & \textbf{6.32} & \textbf{7.0} & 6.39 & 7.0 & 0.99\\
+\bottomrule
+\end{tabular}
+\end{table}
 
 Two physical reference cups are placed at known distances, 0.40~m and 1.00~m, in
 every scene and clicked once per scene folder, so calibration costs two clicks
@@ -171,10 +207,22 @@ W = \frac{|u_2-u_1|\,Z}{f_x}, \qquad
 H = \frac{|v_2-v_1|\,Z}{f_y},
 \label{eq:size}
 \end{equation}
-for a box spanning $u_1..u_2$ and $v_1..v_2$. Intrinsics come from EXIF when
-available; this camera reported nothing usable, so we assume a 65$^\circ$
-horizontal field of view, giving $f_x=f_y=1506.9$~px. That assumption scales all
-absolute numbers uniformly and is revisited in Section~\ref{sec:limits}.
+for a box spanning $u_1..u_2$ and $v_1..v_2$. The stream carries no EXIF, and the
+datasheet publishes a focal length ($4.0$~mm) but no active sensor width, which
+is the quantity needed to convert it to pixels,
+$f_x = f_{\mathrm{mm}}\cdot 1920/w_{\mathrm{mm}}$; nor can the width be recovered
+from the field-of-view figures, which are mutually
+inconsistent: 75.2$^\circ$ horizontal with 40.8$^\circ$ vertical implies neither
+a 16:9 nor a 4:3 frame and a diagonal of 81.1$^\circ$ rather than the quoted
+88.3$^\circ$, and a 4.0~mm lens on the quoted 1/3-in sensor would give
+61.9$^\circ$ horizontal ($f_x\approx1600$~px). We therefore assume a
+65$^\circ$ horizontal field of view, giving $f_x=f_y=1506.9$~px. Back-solving
+$f_x$ from the tape-measured widths of the three compact, opaque objects (275 of
+the 475 scored rows) gives a median of 1478~px, 1.9\,\% below the assumed value,
+so the assumption is consistent with the data to within the box and depth noise.
+Note that $f_x$ enters only Eq.~\eqref{eq:size}: it scales every $W$ and $H$ by
+$1/f_x$ and leaves $Z$ untouched, because $Z$ is fitted from the anchors. The
+assumption is revisited in Section~\ref{sec:limits}.
 
 \subsection{Detection Gating and Row Voiding}
 An early version scored whatever detection was most confident between the two
@@ -189,6 +237,7 @@ the row instead of scoring it. Voided rows are logged, excluded from every
 metric, and counted in the summary.
 
 \section{Experimental Setup}
+\label{sec:setup}
 
 \subsection{Dataset and Rig}
 The dataset contains 100 images: five objects $\times$ five distances (0.50 to
@@ -199,7 +248,10 @@ translucent bottle (7.5$\times$25.0~cm) and a tall, narrow, clear
 bottle (6.2$\times$24.0~cm). The lighting modes are \emph{white}, evenly lit and used as
 reference; \emph{warm}, a strong yellow cast; \emph{dim}, low and flat; and
 \emph{nv}, lights off with an active-infrared illuminator, producing a
-near-monochrome frame. The camera is locked on a tripod and no capture parameter
+near-monochrome frame. The camera is a TP-Link Tapo C200 (1/3-in progressive-scan
+CMOS, fixed 4.0~mm lens, $f/2.0$, 1920$\times$1080 stream; vendor figures
+88.3$^\circ$ diagonal / 75.2$^\circ$ horizontal / 40.8$^\circ$ vertical). It is
+locked on a tripod and no capture parameter
 changes. The two reference cups sit at 0.40~m and 1.00~m in every scene and the
 measured object is placed at the target distance with a tape measure. One image
 per cell, so the design measures systematic behaviour, not shot-to-shot
@@ -423,8 +475,14 @@ per-object breakdown is the cheapest defence.
 \section{Limitations}
 \label{sec:limits}
 \emph{Single camera, assumed intrinsics.} The focal length comes from an assumed
-65$^\circ$ horizontal field of view because the device provided no usable EXIF.
-Real intrinsics would shift every absolute number, not the relative comparisons.
+65$^\circ$ horizontal field of view because the device provided no usable EXIF
+and its published field-of-view figures are mutually inconsistent. The
+assumption was checked against the data, not guessed: back-solving $f_x$ from
+the objects' tape-measured dimensions gives 1478~px against the assumed
+1506.9~px, so width and height may be systematically low by about 2\,\%. Real
+intrinsics would shift every absolute number, not the relative comparisons;
+feeding the vendor figures instead ($f_x=1245$ or 1085~px) inflates $W$ by
+28--47\,\% on the same frames.
 
 \emph{One shot per condition.} A single image per cell does not separate model
 variance from scene variance.
@@ -433,10 +491,10 @@ variance from scene variance.
 without a fixed generator or latents and ran at 10 steps with one ensemble member
 at 768~px rather than 50 steps and 10 members; its number moved from 17.46 to
 8.55~cm between runs, so it should not be quoted as a Marigold result until the
-seed and schedule are fixed. It also predicts direct depth rather than disparity,
-so \eqref{eq:inverse} does not give it its best case (\eqref{eq:affine} would).
-One fit for all models preserves comparability with the earlier run, not fairness
-for Marigold.
+seed and schedule are fixed. All five models, Marigold included, were evaluated
+under the same inverse-depth fit \eqref{eq:inverse}, so the comparison is like for
+like; Table~\ref{tab:calib} shows that for Marigold the two fits are within
+0.1~cm of each other, so the shared fit costs it nothing measurable either way.
 
 \emph{Night is confounded with clipping.} Until an exposure bracket is captured,
 ``depth degrades under infrared'' is not separable from ``this camera clipped the

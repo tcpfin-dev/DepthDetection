@@ -19,43 +19,42 @@
 \@writefile{toc}{\contentsline {section}{\numberline {III}Method}{1}{section.3}\protected@file@percent }
 \newlabel{sec:method}{{III}{1}{Method}{section.3}{}}
 \@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {III-A}}Overview}{1}{subsection.3.1}\protected@file@percent }
-\citation{yang2024dav2}
-\citation{ranftl2022midas,ranftl2021dpt}
-\citation{ke2024marigold}
-\citation{jocher2023yolov8}
 \@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces The pipeline. Both learned components are frozen. Detections are gated to the expected class, the depth map is sampled inside each surviving box, and a two-anchor least-squares fit in disparity space maps relative depth to metres before the pinhole back-projection produces $Z$, $W$ and $H$.}}{2}{figure.1}\protected@file@percent }
 \newlabel{fig:pipeline}{{1}{2}{The pipeline. Both learned components are frozen. Detections are gated to the expected class, the depth map is sampled inside each surviving box, and a two-anchor least-squares fit in disparity space maps relative depth to metres before the pinhole back-projection produces $Z$, $W$ and $H$}{figure.1}{}}
 \@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {III-B}}Disparity-Domain Anchor Calibration}{2}{subsection.3.2}\protected@file@percent }
 \newlabel{eq:affine}{{1}{2}{Disparity-Domain Anchor Calibration}{equation.1}{}}
 \newlabel{eq:inverse}{{2}{2}{Disparity-Domain Anchor Calibration}{equation.2}{}}
 \@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {III-C}}Depth Sampling and Back-Projection}{2}{subsection.3.3}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {I}{\ignorespaces Calibration-form ablation on the white-light set (n$=$25 per cell, five objects, 0.50--0.90~m, YOLOv8m at 0.25, box-median sampling). AF: linear in depth \eqref  {eq:affine}; INV: linear in disparity \eqref  {eq:inverse}. Every affine row has bias $=$ MAE, i.e.\ all of its errors share one sign.}}{2}{table.1}\protected@file@percent }
+\newlabel{tab:calib}{{I}{2}{Calibration-form ablation on the white-light set (n$=$25 per cell, five objects, 0.50--0.90~m, YOLOv8m at 0.25, box-median sampling). AF: linear in depth \eqref {eq:affine}; INV: linear in disparity \eqref {eq:inverse}. Every affine row has bias $=$ MAE, i.e.\ all of its errors share one sign}{table.1}{}}
 \newlabel{eq:size}{{3}{2}{Depth Sampling and Back-Projection}{equation.3}{}}
 \@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {III-D}}Detection Gating and Row Voiding}{2}{subsection.3.4}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {IV}Experimental Setup}{2}{section.4}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {IV-A}}Dataset and Rig}{2}{subsection.4.1}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {IV-B}}Models and Implementation}{2}{subsection.4.2}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {IV-C}}Metrics}{2}{subsection.4.3}\protected@file@percent }
-\@writefile{lot}{\contentsline {table}{\numberline {I}{\ignorespaces Overall accuracy over 475 scored rows per model (25 voided rows excluded). Bias is the mean signed error; $>$20~cm and $>$30\,\% are gross-failure rates. Best value in each column is bold.}}{3}{table.1}\protected@file@percent }
-\newlabel{tab:overall}{{I}{3}{Overall accuracy over 475 scored rows per model (25 voided rows excluded). Bias is the mean signed error; $>$20~cm and $>$30\,\% are gross-failure rates. Best value in each column is bold}{table.1}{}}
-\@writefile{lot}{\contentsline {table}{\numberline {II}{\ignorespaces MAE of $Z$ in cm / mean relative error in \%, by lighting condition (rows 1--4) and by object (rows 5--9). The apple has $n=15$ per model and the \emph  {nv} rows $n=20$, because the apple is never detected at night. Marigold is omitted here and discussed in the text.}}{3}{table.2}\protected@file@percent }
-\newlabel{tab:groups}{{II}{3}{MAE of $Z$ in cm / mean relative error in \%, by lighting condition (rows 1--4) and by object (rows 5--9). The apple has $n=15$ per model and the \emph {nv} rows $n=20$, because the apple is never detected at night. Marigold is omitted here and discussed in the text}{table.2}{}}
+\citation{yang2024dav2}
+\citation{ranftl2022midas,ranftl2021dpt}
+\citation{ke2024marigold}
+\citation{jocher2023yolov8}
+\@writefile{toc}{\contentsline {section}{\numberline {IV}Experimental Setup}{3}{section.4}\protected@file@percent }
+\newlabel{sec:setup}{{IV}{3}{Experimental Setup}{section.4}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {IV-A}}Dataset and Rig}{3}{subsection.4.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {IV-B}}Models and Implementation}{3}{subsection.4.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {IV-C}}Metrics}{3}{subsection.4.3}\protected@file@percent }
 \@writefile{toc}{\contentsline {section}{\numberline {V}Results and Discussion}{3}{section.5}\protected@file@percent }
 \newlabel{sec:results}{{V}{3}{Results and Discussion}{section.5}{}}
 \@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {V-A}}Overall Accuracy}{3}{subsection.5.1}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {II}{\ignorespaces Overall accuracy over 475 scored rows per model (25 voided rows excluded). Bias is the mean signed error; $>$20~cm and $>$30\,\% are gross-failure rates. Best value in each column is bold.}}{3}{table.2}\protected@file@percent }
+\newlabel{tab:overall}{{II}{3}{Overall accuracy over 475 scored rows per model (25 voided rows excluded). Bias is the mean signed error; $>$20~cm and $>$30\,\% are gross-failure rates. Best value in each column is bold}{table.2}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {III}{\ignorespaces MAE of $Z$ in cm / mean relative error in \%, by lighting condition (rows 1--4) and by object (rows 5--9). The apple has $n=15$ per model and the \emph  {nv} rows $n=20$, because the apple is never detected at night. Marigold is omitted here and discussed in the text.}}{3}{table.3}\protected@file@percent }
+\newlabel{tab:groups}{{III}{3}{MAE of $Z$ in cm / mean relative error in \%, by lighting condition (rows 1--4) and by object (rows 5--9). The apple has $n=15$ per model and the \emph {nv} rows $n=20$, because the apple is never detected at night. Marigold is omitted here and discussed in the text}{table.3}{}}
 \@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {V-B}}Effect of Lighting}{3}{subsection.5.2}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {V-C}}Object Profile: What Is Actually Solved}{3}{subsection.5.3}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {V-D}}Width and Height Accuracy}{3}{subsection.5.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {V-C}}Object Profile: What Is Actually Solved}{4}{subsection.5.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {V-D}}Width and Height Accuracy}{4}{subsection.5.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {V-E}}Error Versus Distance}{4}{subsection.5.5}\protected@file@percent }
 \@writefile{lof}{\contentsline {figure}{\numberline {2}{\ignorespaces Mean absolute distance error against true object distance, all objects. Absolute error grows monotonically for every model but Marigold, while relative error grows far more slowly (Section~\ref {sec:results}), the signature of a correctly scaled inverse-depth fit.}}{4}{figure.2}\protected@file@percent }
 \newlabel{fig:results}{{2}{4}{Mean absolute distance error against true object distance, all objects. Absolute error grows monotonically for every model but Marigold, while relative error grows far more slowly (Section~\ref {sec:results}), the signature of a correctly scaled inverse-depth fit}{figure.2}{}}
 \@writefile{lof}{\contentsline {figure}{\numberline {3}{\ignorespaces Two frames with Depth Anything V2 Large: a mug at 0.50~m in white light (top) and the tall clear bottle at 0.90~m under infrared (bottom). Columns are the RGB input, the relative-depth map (magma, brighter = closer) and the sized output. The mug is sized to within 1.1~cm; the bottle, which barely separates from the background in the depth map, is read 16.8~cm too far, and its width error propagates into a reported 9.1~cm width for a 6.2~cm object.}}{4}{figure.3}\protected@file@percent }
 \newlabel{fig:qualitative}{{3}{4}{Two frames with Depth Anything V2 Large: a mug at 0.50~m in white light (top) and the tall clear bottle at 0.90~m under infrared (bottom). Columns are the RGB input, the relative-depth map (magma, brighter = closer) and the sized output. The mug is sized to within 1.1~cm; the bottle, which barely separates from the background in the depth map, is read 16.8~cm too far, and its width error propagates into a reported 9.1~cm width for a 6.2~cm object}{figure.3}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {V-E}}Error Versus Distance}{4}{subsection.5.5}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {V-F}}The Tall Bottle: A Signed Bias, Not Noise}{4}{subsection.5.6}\protected@file@percent }
 \newlabel{sec:b01}{{\mbox  {V-F}}{4}{The Tall Bottle: A Signed Bias, Not Noise}{subsection.5.6}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {V-G}}Voided Rows and Evaluation Integrity}{4}{subsection.5.7}\protected@file@percent }
-\newlabel{sec:integrity}{{\mbox  {V-G}}{4}{Voided Rows and Evaluation Integrity}{subsection.5.7}{}}
-\@writefile{toc}{\contentsline {section}{\numberline {VI}Limitations}{4}{section.6}\protected@file@percent }
-\newlabel{sec:limits}{{VI}{4}{Limitations}{section.6}{}}
 \bibcite{eigen2014depth}{1}
 \bibcite{ranftl2022midas}{2}
 \bibcite{ranftl2021dpt}{3}
@@ -69,6 +68,10 @@
 \bibcite{geiger2012kitti}{11}
 \bibcite{silberman2012indoor}{12}
 \bibcite{hartley2004mvg}{13}
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {V-G}}Voided Rows and Evaluation Integrity}{5}{subsection.5.7}\protected@file@percent }
+\newlabel{sec:integrity}{{\mbox  {V-G}}{5}{Voided Rows and Evaluation Integrity}{subsection.5.7}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {VI}Limitations}{5}{section.6}\protected@file@percent }
+\newlabel{sec:limits}{{VI}{5}{Limitations}{section.6}{}}
 \@writefile{toc}{\contentsline {section}{\numberline {VII}Conclusion}{5}{section.7}\protected@file@percent }
 \@writefile{toc}{\contentsline {section}{References}{5}{section*.1}\protected@file@percent }
 \gdef \@abspage@last{5}

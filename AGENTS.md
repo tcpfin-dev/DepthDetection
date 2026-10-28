@@ -197,14 +197,23 @@ into meters (and `--distance` / `--object-height` work when there are no cups).
 `test_sizing.py` and `test_pipeline.py` need a calibration anchor (a
 tape-measured distance) to turn relative depth into meters: `--distance <m>` for
 a single anchor (assumes `beta = 0`) or two or more `--anchor u,v,distance_m` for
-a full fit. `test_pipeline.py`'s `--calib` picks what is fitted: `affine`
-(default) fits `Z = alpha*D + beta`; `inverse` fits the disparity
-`1/Z = alpha*D + beta`, which is much more accurate for objects that sit
-*between* the anchors (monocular depth is roughly inverse-depth, not linear in
-distance). `test_pipeline.py` additionally accepts `--object-height <m>`
+a full fit. `test_pipeline.py`'s `--calib` picks what is fitted: `inverse`
+(default) fits the disparity `1/Z = alpha*D + beta`, which is the correct basis
+for the roughly inverse-depth output of the regression heads and much more
+accurate for objects that sit *between* the anchors; `affine` fits
+`Z = alpha*D + beta`, kept for fidelity to the proposal's linear form and as the
+native basis for Marigold's affine-invariant output (measured on this dataset the
+two forms are within noise for Marigold and affine is clearly worse for
+Depth Anything V2 / MiDaS). `test_pipeline.py` additionally accepts
+`--object-height <m>`
 (known real height of the `--target` class, so no depth anchor is needed).
-Camera focal length comes from `--fx`/`--fy`, else EXIF
-(`FocalLengthIn35mmFilm`), else an assumed `--hfov` (65 deg).
+Camera focal length comes from `--fx`/`--fy`, else `--focal-mm` +
+`--sensor-width-mm`, else EXIF (`FocalLengthIn35mmFilm`), else `--dfov`
+(diagonal FOV, converted by frame aspect), else `--hfov` - default 65 deg, the
+measured value for the 1920x1080 Tapo C200 rig (fx ~= 1507 px). The camera's
+spec sheet says "4.0 mm / 83 deg", but that diagonal figure measured 4x worse
+W/H MAE; see the `CAMERA_HFOV_DEG` comment. `meta.intrinsics` records which
+source won and `meta.intrinsics_args` the CLI values.
 
 If `--image` is omitted each script generates a deterministic synthetic image
 (seeded RNG) so it doubles as an environment/dependency smoke test. Expect

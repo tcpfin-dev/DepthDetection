@@ -30,17 +30,23 @@ is required to pin it to reality:
                               distance is recovered from the box height and the
                               focal length (no depth anchor needed)
 
-``--calib`` chooses how the anchors are turned into meters. ``affine`` (default)
-fits ``Z = alpha*D + beta`` as in the proposal. ``inverse`` fits the disparity
-``1/Z = alpha*D + beta``, which matches the roughly inverse-depth output of
-monocular depth models and interpolates far more accurately between anchors:
+``--calib`` chooses how the anchors are turned into meters. ``inverse``
+(default) fits the disparity ``1/Z = alpha*D + beta``, which matches the
+roughly inverse-depth output of monocular depth models and interpolates far
+more accurately between anchors. ``affine`` fits ``Z = alpha*D + beta``, the
+proposal's linear form, and is kept for fidelity to that spec and for
+single-anchor scale fits:
 
-    python test_pipeline.py --image image1.png --target bottle --calib inverse \\
+    python test_pipeline.py --image image1.png --target bottle --calib affine \\
         --anchor 1463,935,0.2 --anchor 1229,308,1.0
 
 Camera intrinsics come from ``--fx/--fy`` if given, otherwise from EXIF
 (``FocalLengthIn35mmFilm``, matching the proposal's "student setup shortcut"),
-otherwise an assumed ``--hfov`` (65 deg) is used.
+otherwise ``--focal-mm`` + ``--sensor-width-mm`` (physical lens focal length on
+a known sensor width), otherwise ``--dfov`` (diagonal FOV, what spec sheets
+quote; converted to horizontal for the frame aspect), otherwise an assumed
+``--hfov`` (65 deg). Only W/H depend on the focal length - the depth->Z
+calibration is fitted from the anchors.
 
 Batch / dataset mode
 --------------------
@@ -109,11 +115,13 @@ Usage
         --anchor 1900,1500,0.5 --anchor 3400,1500,1.2
     python test_pipeline.py --image photo.jpg --target bottle --yolo-size large
 
-    # whole-dataset batch, every depth model, auto anchors + auto eval (affine,
-    # because Marigold is direct-depth; use --calib inverse for the inverse-depth
-    # heads only, e.g. --depth-model small,base,large,midas):
-    python test_pipeline.py --dataset dataset --depth-model all --calib affine
+    # whole-dataset batch, every depth model, auto anchors + auto eval. The
+    # default --calib inverse is the fair single fit: it is the correct basis
+    # for the four inverse-depth heads and within noise for Marigold:
+    python test_pipeline.py --dataset dataset --depth-model all
     python test_pipeline.py --dataset dataset/white --depth-model large --conf 0.2
+    # proposal-faithful linear form instead:
+    python test_pipeline.py --dataset dataset --depth-model all --calib affine
 
 ``--yolo-size nano|small|medium|large|xlarge`` selects the YOLOv8 backbone
 (default ``nano``); a larger one detects small, low-contrast objects such as the
@@ -127,9 +135,11 @@ checkpoint. ``--marigold-steps`` (default 10; the paper uses 50),
 ``--marigold-ensemble`` (default 1; the paper uses 10) and
 ``--marigold-resolution`` (default 768 px) trade runtime for accuracy. Marigold
 emits *direct* depth (larger = farther), the opposite convention to the Depth
-Anything V2 ``-hf`` checkpoints (larger = nearer); the affine fit learns the sign
-either way, so keep ``--calib affine`` (the default) for Marigold and reserve
-``--calib inverse`` for the inverse-depth checkpoints.
+Anything V2 ``-hf`` checkpoints (larger = nearer). Either fit learns the sign,
+so the default ``--calib inverse`` works for Marigold too - measured over 25
+white-light frames the two forms land within 0.1 cm MAE of each other - while
+``--calib affine`` is the strictly correct basis for its affine-invariant
+output if you want to report Marigold at its native form.
 
 If ``--image`` is omitted a synthetic image is generated so the script also
 doubles as an environment/dependency smoke test (a calibration flag is still
@@ -202,6 +212,20 @@ _SCRIPT_DIR = Path(__file__).resolve().parent
 # ``all``: they are faster stand-ins for a family already covered above, so ask
 # for them explicitly (``--depth-model small,midas-small,marigold-lcm``).
 BATCH_DEPTH_MODELS = ("small", "base", "large", "midas", "marigold")
+
+# Default camera intrinsics. This rig is a TP-Link Tapo C200 (4.0 mm lens,
+# 1920x1080 stream). Its spec sheet quotes an "83 deg" field of view, but that is
+# a diagonal/optimistic figure: measured on dataset/white (n=25, DA-V2 large,
+# yolov8m) the assumed 65 deg horizontal FOV (= fx 1507 px at 1920 wide) sizes
+# W/H best, and feeding the spec numbers is monotonically worse -
+#   --dfov 83            -> fx 1245, W MAE 0.58 -> 2.36 cm (+28 % bias)
+#   --focal-mm 4.0 (+5.37mm sensor) -> fx 1430, W MAE 0.89 cm (+11.6 %)
+#   --hfov 83            -> fx 1085, W MAE 4.04 cm (+47 %)
+# Back-solving fx from the objects' true W/H gives a median of 1518-1538 px, so
+# 65 deg is the honest value for these frames; Z is unaffected either way (it is
+# fitted from the anchors). Keep this as the default - override only with
+# measured intrinsics for a different camera.
+CAMERA_HFOV_DEG = 65.0
 
 # Marigold defaults. v1-0 was trained for 10-50 DDIM steps and evaluated with a
 # 10-sample ensemble; 10 steps without ensembling keeps a dataset run bearable
@@ -287,10 +311,11 @@ def parse_args(argv=None):
                             "discovery; 'cup1 anchor (636, 663, 40cm)' lines).")
     calib.add_argument("--object-height", type=float, default=None, metavar="M",
                        help="Known real height (m) of the --target class; distance from box height + focal length.")
-    calib.add_argument("--calib", choices=["affine", "inverse"], default="affine",
-                       help="Depth->distance model: 'affine' Z=alpha*D+beta (default) or "
-                            "'inverse' 1/Z=alpha*D+beta (disparity-linear; better between anchors, "
-                            "but only valid for inverse-depth models - not Marigold).")
+    calib.add_argument("--calib", choices=["affine", "inverse"], default="inverse",
+                       help="Depth->distance model: 'inverse' 1/Z=alpha*D+beta (default; disparity-" 
+                            "linear, the correct basis for the inverse-depth checkpoints and the best "
+                            "interpolation between anchors) or 'affine' Z=alpha*D+beta (the proposal's "
+                            "linear form; strictly right for Marigold's affine-invariant output).")
 
     parser.add_argument("--depth-sample", choices=["box_median", "box_center", "bottom_center"],
                         default="box_median", help="Where to read an object's depth from its box (default: box_median).")
@@ -298,8 +323,18 @@ def parse_args(argv=None):
     parser.add_argument("--fy", type=float, default=None, help="Focal length in pixels (y).")
     parser.add_argument("--cx", type=float, default=None, help="Principal point x (default: image center).")
     parser.add_argument("--cy", type=float, default=None, help="Principal point y (default: image center).")
-    parser.add_argument("--hfov", type=float, default=65.0,
-                        help="Assumed horizontal FOV (deg) when --fx and EXIF are unavailable (default: 65).")
+    parser.add_argument("--hfov", type=float, default=CAMERA_HFOV_DEG,
+                        help=f"Horizontal FOV (deg) when --fx, --focal-mm and EXIF are all unavailable "
+                             f"(default: {CAMERA_HFOV_DEG:g}, the measured value for this 1920x1080 rig).")
+    parser.add_argument("--dfov", type=float, default=None, metavar="DEG",
+                        help="Diagonal FOV (deg) - what most camera spec sheets quote. Converted to a "
+                             "horizontal FOV for the image aspect before making fx.")
+    parser.add_argument("--focal-mm", type=float, default=None, metavar="MM",
+                        help="Physical focal length (mm) from the lens/spec sheet; needs --sensor-width-mm "
+                             "to become pixels.")
+    parser.add_argument("--sensor-width-mm", type=float, default=None, metavar="MM",
+                        help="Active sensor width in mm (1/2.9in ~5.37, 1/2.7in ~5.27, 1/2.3in ~6.17); "
+                             "used with --focal-mm to derive fx in pixels.")
     parser.add_argument("--no-exif", dest="exif", action="store_false",
                         help="Do not read the focal length from EXIF metadata.")
     parser.set_defaults(exif=True)
@@ -640,23 +675,55 @@ def exif_focal_pixels(src_path, width):
     return float(f35) / _FULLFRAME_WIDTH_MM * float(width)
 
 
+def diag_fov_to_hfov(dfov_deg, width, height):
+    """Horizontal FOV (deg) from a diagonal FOV (deg) for a ``width x height`` frame."""
+    half_diag = math.radians(dfov_deg) / 2.0
+    half_h = math.atan(math.tan(half_diag) * width / math.hypot(width, height))
+    return math.degrees(2.0 * half_h)
+
+
 def resolve_intrinsics(args, src_path, width, height, warn=True):
-    """Return ``(fx, fy, cx, cy, source)`` trying CLI -> EXIF -> assumed FOV."""
+    """Return ``(fx, fy, cx, cy, source)``.
+
+    Order: ``--fx/--fy`` -> ``--focal-mm`` (+``--sensor-width-mm``) -> EXIF ->
+    ``--dfov`` -> assumed ``--hfov``.
+    """
     if args.fx or args.fy:
         fx = args.fx if args.fx else args.fy
         fy = args.fy if args.fy else args.fx
         cx = args.cx if args.cx is not None else width / 2.0
         cy = args.cy if args.cy is not None else height / 2.0
         return fx, fy, cx, cy, "cli"
+    if args.focal_mm:
+        if args.sensor_width_mm:
+            fx = float(args.focal_mm) * float(width) / float(args.sensor_width_mm)
+        else:
+            # No sensor width: fall back to the spec sheet's diagonal FOV if one
+            # was given, otherwise refuse to guess a sensor size.
+            if not args.dfov:
+                sys.exit("--focal-mm needs --sensor-width-mm (or pass --dfov) to become pixels.")
+            hfov = diag_fov_to_hfov(args.dfov, width, height)
+            fx = 0.5 * width / math.tan(math.radians(hfov) / 2.0)
+        cx = args.cx if args.cx is not None else width / 2.0
+        cy = args.cy if args.cy is not None else height / 2.0
+        return fx, fx, cx, cy, "focal-mm"
     if args.exif and src_path is not None:
         f = exif_focal_pixels(src_path, width)
         if f:
             cx = args.cx if args.cx is not None else width / 2.0
             cy = args.cy if args.cy is not None else height / 2.0
             return f, f, cx, cy, "exif"
+    if args.dfov:
+        hfov = diag_fov_to_hfov(args.dfov, width, height)
+        fx = 0.5 * width / math.tan(math.radians(hfov) / 2.0)
+        if warn:
+            print(f"[info] camera    : {args.dfov:g} deg diagonal -> {hfov:.2f} deg horizontal "
+                  f"(f={fx:.0f} px).")
+        return fx, fx, width / 2.0, height / 2.0, "dfov"
     fx = 0.5 * width / math.tan(math.radians(args.hfov) / 2.0)
     if warn:
-        print(f"[warn] no --fx and no usable EXIF; assuming a {args.hfov:g} deg horizontal FOV (f={fx:.0f} px).")
+        print(f"[warn] no --fx and no usable EXIF; using the verified rig default of "
+              f"{args.hfov:g} deg horizontal FOV (f={fx:.0f} px).")
     return fx, fx, width / 2.0, height / 2.0, "hfov"
 
 
@@ -915,6 +982,8 @@ def size_image(args, image, src_path, model_key, pipe=None, yolo_model=None, anc
         "image": str(src_path),
         "width": image.width, "height": image.height,
         "fx": fx, "fy": fy, "cx": cx, "cy": cy, "intrinsics": intrinsic_src,
+        "intrinsics_args": {"focal_mm": args.focal_mm, "sensor_width_mm": args.sensor_width_mm,
+                            "dfov": args.dfov, "hfov": args.hfov},
         "depth_model": MODELS.get(model_key, model_key),
         "yolo": args.yolo,
         "calibration": {"mode": how, "model": model, "alpha": alpha, "beta": beta,
