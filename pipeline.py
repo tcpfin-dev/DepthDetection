@@ -233,6 +233,10 @@ CAMERA_HFOV_DEG = 65.0
 MARIGOLD_STEPS = 10
 MARIGOLD_ENSEMBLE = 1
 MARIGOLD_RESOLUTION = 768
+# Marigold is a stochastic diffusion sampler, so two runs of the same image give
+# different depth maps (and different MAE). A fixed generator seed makes a run
+# reproducible: same seed + same image + same steps = same depth map.
+MARIGOLD_SEED = 42
 
 # Extensions and lighting tokens recognised while scanning a dataset folder.
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tif", ".tiff"}
@@ -299,6 +303,10 @@ def parse_args(argv=None):
                           help=f"Marigold ensemble size (default: {MARIGOLD_ENSEMBLE}; paper uses 10).")
     marigold.add_argument("--marigold-resolution", type=int, default=MARIGOLD_RESOLUTION,
                           help=f"Marigold processing resolution in px (default: {MARIGOLD_RESOLUTION}).")
+    marigold.add_argument("--seed", type=int, default=MARIGOLD_SEED,
+                          help="RNG seed for the diffusion sampler (default: "
+                               f"{MARIGOLD_SEED}). Marigold is stochastic, so a fixed seed is what "
+                               "makes its numbers reproducible; ignored by the regression heads.")
 
     calib = parser.add_argument_group("metric calibration (pick one)")
     calib.add_argument("--distance", type=float, default=None,
@@ -759,17 +767,26 @@ def make_depth_pipe(model_id=None):
     return pipe.to(device)
 
 
-def run_depth(image, model_id, pipe=None, steps=None, ensemble=None, resolution=None):
+def run_depth(image, model_id, pipe=None, steps=None, ensemble=None, resolution=None,
+              seed=MARIGOLD_SEED):
     """Zero-shot relative depth map for one image.
 
     Orientation depends on the family: the Depth Anything V2 ``-hf`` checkpoints
     (and MiDaS) emit *inverse* depth, larger = nearer; Marigold emits *direct*
     depth, larger = farther. The affine fit learns the sign either way, but only
     the inverse-depth family suits ``--calib inverse``.
+
+    ``seed`` drives Marigold's diffusion sampler through an explicit
+    ``torch.Generator``; without it every run draws fresh noise and no number is
+    reproducible. The regression heads ignore it.
     """
     if pipe is None:
         pipe = make_depth_pipe(model_id)
     if is_marigold(MODELS.get(model_id, model_id)):
+        generator = None
+        if seed is not None:
+            gen_device = "cuda" if torch.cuda.is_available() else "cpu"
+            generator = torch.Generator(device=gen_device).manual_seed(int(seed))
         out = pipe(
             image,
             num_inference_steps=steps or MARIGOLD_STEPS,
@@ -777,6 +794,7 @@ def run_depth(image, model_id, pipe=None, steps=None, ensemble=None, resolution=
             processing_resolution=resolution or MARIGOLD_RESOLUTION,
             match_input_resolution=True,
             output_type="np",
+            generator=generator,
         )
         predicted = out.prediction
     else:
@@ -913,7 +931,8 @@ def size_image(args, image, src_path, model_key, pipe=None, yolo_model=None, anc
 
     t0 = time.perf_counter()
     depth = run_depth(image, model_key, pipe, args.marigold_steps,
-                      args.marigold_ensemble, args.marigold_resolution)
+                      args.marigold_ensemble, args.marigold_resolution,
+                      seed=args.seed)
     if not quiet:
         print(f"[info] depth     : {depth.shape} in {time.perf_counter() - t0:.2f}s "
               f"range=[{depth.min():.3f}, {depth.max():.3f}]")
@@ -985,6 +1004,9 @@ def size_image(args, image, src_path, model_key, pipe=None, yolo_model=None, anc
         "intrinsics_args": {"focal_mm": args.focal_mm, "sensor_width_mm": args.sensor_width_mm,
                             "dfov": args.dfov, "hfov": args.hfov},
         "depth_model": MODELS.get(model_key, model_key),
+        "depth_seed": args.seed,
+        "marigold_args": {"steps": args.marigold_steps, "ensemble": args.marigold_ensemble,
+                          "resolution": args.marigold_resolution},
         "yolo": args.yolo,
         "calibration": {"mode": how, "model": model, "alpha": alpha, "beta": beta,
                         "object_height_m": args.object_height, "distance_m": args.distance,

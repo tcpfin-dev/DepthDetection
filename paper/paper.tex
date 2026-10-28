@@ -23,11 +23,24 @@
 \title{Zero-Shot Monocular Depth Estimation for Metric Object Sizing in
 Low-Contrast Environments}
 
+\hypersetup{
+  pdftitle={Zero-Shot Monocular Depth Estimation for Metric Object Sizing in Low-Contrast Environments},
+  pdfauthor={Huang JunLin; Y. F. Tang},
+  pdfsubject={Nanyang Polytechnic, School of Engineering}
+}
+
 \author{
 \IEEEauthorblockN{Huang JunLin}
 \IEEEauthorblockA{School of Engineering\\
 Nanyang Polytechnic\\
-Singapore}
+Singapore\\
+\texttt{243326R@mymail.nyp.edu.sg}}
+\and
+\IEEEauthorblockN{Y. F. Tang}
+\IEEEauthorblockA{School of Engineering\\
+Nanyang Polytechnic\\
+Singapore\\
+\texttt{tang\_yew\_fei@nyp.edu.sg}}
 }
 
 \maketitle
@@ -36,7 +49,7 @@ Singapore}
 We ask how far a purely zero-shot pipeline can go from a single RGB image to
 tape-measured object dimensions. The pipeline pairs a frozen YOLOv8m detector
 with a frozen monocular depth model and converts relative depth into metres with
-a two-anchor disparity fit; a pinhole back-projection then yields each object's
+a two-anchor depth-to-metric fit; a pinhole back-projection then yields each object's
 distance $Z$, width $W$ and height $H$. On a purpose-built 100-image dataset
 (five household objects, five distances from 0.50 to 0.90~m, four lighting
 conditions including an active-infrared night mode) we benchmark five depth
@@ -46,8 +59,9 @@ Depth Anything V2 Large is best, with 3.63~cm mean absolute distance error
 against 9.38~cm for MiDaS. The aggregate hides a strongly non-uniform error
 profile: 61\,\% of the total absolute distance error comes from one tall, thin,
 clear bottle, and that error is a one-directional over-estimation almost
-entirely explained by where depth is sampled inside the box; sampling the
-ground-contact point instead of the box interior cuts it by 40\,\% at no cost.
+entirely explained by where depth is sampled inside the box; on the investigated
+night/tall-bottle subset, sampling the ground-contact point instead of the box
+interior reduces MAE by 52\,\% without modifying or retraining the depth model.
 Night-time infrared capture is the second failure mode, and its error tracks
 highlight clipping rather than low contrast. We also show that 5\,\% of
 detection rows must be voided rather than scored, and that scoring them silently
@@ -77,15 +91,16 @@ tape-measured. Every model is used as shipped: no fine-tuning, no per-scene
 optimisation, no test-time adaptation. Our contributions are:
 
 \begin{itemize}
-\item a reproducible zero-shot pipeline that converts detector boxes plus
-relative depth into per-object $Z$, $W$ and $H$ (Section~\ref{sec:method}), with
-a 100-image dataset spanning lighting, distance and object axes;
+\item a fully specified zero-shot pipeline (frozen models, fixed seeds and two
+clicked anchors) that converts detector boxes plus
+relative depth into per-object $Z$, $W$ and $H$ (Section~\ref{sec:method}), over
+a 100-image dataset with one image per experimental cell;
 \item a five-model benchmark on that dataset, reported in aggregate and
 decomposed by lighting, distance and object (Section~\ref{sec:results});
 \item the finding that the aggregate error is dominated by a single object
 geometry, that this error is a signed bias rather than noise, and that a
-one-line change to depth sampling removes 40\,\% of it
-(Section~\ref{sec:b01});
+one-line change to depth sampling reduces MAE by 52\,\% on the investigated
+night/tall-bottle subset (Section~\ref{sec:b01});
 \item an evaluation-integrity result: without a detection gate, 10\,\% of rows
 silently size the wrong object and inflate reported error by up to
 2$\times$ (Section~\ref{sec:integrity}).
@@ -114,7 +129,7 @@ or room scenes and report scale-invariant errors, so they do not answer how a
 commodity camera with an assumed field of view performs on small objects at
 0.5--0.9~m under warm, dim and infrared light.
 
-\begin{figure*}[t]
+\begin{figure*}[!t]
 \centering
 \includegraphics[width=\textwidth]{fig1_pipeline.png}
 \caption{The pipeline. Both learned components are frozen. Detections are gated
@@ -157,21 +172,25 @@ on 25 white-light frames (five objects at 0.50--0.90~m) the two forms see
 identical boxes, anchors, detector and depth sampling, and only the fitted curve
 differs. For the four regression heads the linear form is not merely worse, it
 fails in a structured way: its mean signed error equals its MAE row for row,
-i.e.\ \emph{every} prediction is long, because a straight line pinned to two
+i.e.\ \emph{every} prediction is long, since a straight line pinned to two
 inverse-depth anchors lies above the true curve everywhere between them. The
 penalty is 2.7--3.6$\times$ in MAE for the Depth Anything V2 sizes (Large:
-3.42 to 12.42~cm) and 1.35$\times$ for MiDaS. Marigold is the sole exception
-(6.32 against 6.39~cm), which is what its affine-invariant, direct-depth output
-predicts; we therefore keep it under the same fit and flag the parity in
-Section~\ref{sec:limits} rather than re-tuning one model. All results below use
-\eqref{eq:inverse}, which is also the default of the implementation.
+3.42 to 12.42~cm) and 1.35$\times$ for MiDaS. Marigold reverses the ordering
+(6.72 against 11.45~cm), which is what its direct-depth output predicts:
+disparity is close to flat in its depth values, so \eqref{eq:inverse} divides by
+a near-zero and near-cancelling denominator and amplifies noise instead of
+interpolating. Marigold is therefore evaluated under \eqref{eq:affine}, the fit
+its output implies, everywhere below; all other results use \eqref{eq:inverse},
+which is also the default of the implementation.
 
-\begin{table}[t]
+\begin{table}[!t]
 \centering
 \caption{Calibration-form ablation on the white-light set (n$=$25 per cell, five
 objects, 0.50--0.90~m, YOLOv8m at 0.25, box-median sampling). AF: linear in depth
-\eqref{eq:affine}; INV: linear in disparity \eqref{eq:inverse}. Every affine row
-has bias $=$ MAE, i.e.\ all of its errors share one sign.}
+\eqref{eq:affine}; INV: linear in disparity \eqref{eq:inverse}. rel is the mean
+absolute relative error, as in Tables~\ref{tab:overall} and~\ref{tab:groups}.
+Every affine row but Marigold's has bias $=$ MAE, i.e.\ all of its errors share
+one sign. Marigold is seeded (seed 42) in both columns.}
 \label{tab:calib}
 \footnotesize
 \setlength{\tabcolsep}{3.5pt}
@@ -182,11 +201,11 @@ has bias $=$ MAE, i.e.\ all of its errors share one sign.}
 Model & MAE & rel & MAE & rel & AF/INV\\
       & (cm) & (\%) & (cm) & (\%) & MAE\\
 \midrule
-DA-V2-S & 12.16 & 18.1 & \textbf{4.45} & \textbf{4.5} & 2.73\\
-DA-V2-B & 13.29 & 20.1 & \textbf{4.73} & \textbf{6.0} & 2.81\\
-DA-V2-L & 12.42 & 18.7 & \textbf{3.42} & \textbf{4.2} & 3.63\\
-MiDaS & 16.58 & 25.5 & \textbf{12.32} & \textbf{15.8} & 1.35\\
-Marigold & \textbf{6.32} & \textbf{7.0} & 6.39 & 7.0 & 0.99\\
+DA-V2-S & 12.16 & 18.1 & \textbf{4.45} & \textbf{6.1} & 2.73\\
+DA-V2-B & 13.29 & 20.1 & \textbf{4.73} & \textbf{6.5} & 2.81\\
+DA-V2-L & 12.42 & 18.7 & \textbf{3.42} & \textbf{4.5} & 3.63\\
+MiDaS & 16.58 & 25.5 & \textbf{12.32} & \textbf{17.1} & 1.35\\
+Marigold & \textbf{6.72} & \textbf{9.5} & 11.45 & 15.5 & 0.59\\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -210,31 +229,28 @@ H = \frac{|v_2-v_1|\,Z}{f_y},
 for a box spanning $u_1..u_2$ and $v_1..v_2$. The stream carries no EXIF, and the
 datasheet publishes a focal length ($4.0$~mm) but no active sensor width, which
 is the quantity needed to convert it to pixels,
-$f_x = f_{\mathrm{mm}}\cdot 1920/w_{\mathrm{mm}}$; nor can the width be recovered
-from the field-of-view figures, which are mutually
-inconsistent: 75.2$^\circ$ horizontal with 40.8$^\circ$ vertical implies neither
-a 16:9 nor a 4:3 frame and a diagonal of 81.1$^\circ$ rather than the quoted
-88.3$^\circ$, and a 4.0~mm lens on the quoted 1/3-in sensor would give
-61.9$^\circ$ horizontal ($f_x\approx1600$~px). We therefore assume a
+$f_x = f_{\mathrm{mm}}\cdot 1920/w_{\mathrm{mm}}$; nor can it be recovered from
+the vendor's field-of-view figures, which are mutually inconsistent: 75.2$^\circ$
+horizontal with 40.8$^\circ$ vertical implies a 81.1$^\circ$ diagonal, not the
+quoted 88.3$^\circ$, and neither a 16:9 nor a 4:3 frame. We therefore assume a
 65$^\circ$ horizontal field of view, giving $f_x=f_y=1506.9$~px. Back-solving
 $f_x$ from the tape-measured widths of the three compact, opaque objects (275 of
-the 475 scored rows) gives a median of 1478~px, 1.9\,\% below the assumed value,
-so the assumption is consistent with the data to within the box and depth noise.
-Note that $f_x$ enters only Eq.~\eqref{eq:size}: it scales every $W$ and $H$ by
-$1/f_x$ and leaves $Z$ untouched, because $Z$ is fitted from the anchors. The
-assumption is revisited in Section~\ref{sec:limits}.
+the 475 scored rows) gives a median of 1483~px, 1.6\,\% below the assumed value,
+so the assumption is consistent with the data to within the box and depth noise
+(a consistency check, not a calibration; Section~\ref{sec:limits}).
+Note that $f_x$ enters only
+Eq.~\eqref{eq:size}: it scales every $W$ and $H$ and leaves $Z$ untouched.
 
 \subsection{Detection Gating and Row Voiding}
 An early version scored whatever detection was most confident between the two
-anchors. Since the anchors are themselves cups, that frequently scored a
-\emph{calibration cup}, a knife or the table, and because ground-truth distance
-comes from the filename the resulting ``errors'' were 10--50~cm of pure
-bookkeeping (Section~\ref{sec:integrity}). The pipeline now applies three rules:
+anchors, which frequently meant a \emph{calibration cup}, a knife or the table,
+and because ground-truth distance comes from the filename the resulting
+``errors'' were 10--50~cm of pure bookkeeping (Section~\ref{sec:integrity}). The
+pipeline now applies three rules:
 (i) drop any detection whose box contains an anchor click, which is exact because
-the clicks land on the anchor cups; (ii) keep only detections of the class the
-scene is about, from the object id or a target flag; (iii) if none survives, void
-the row instead of scoring it. Voided rows are logged, excluded from every
-metric, and counted in the summary.
+the clicks land on the cups; (ii) keep only detections of the scene's class, from
+the object id or a target flag; (iii) if none survives, void the row. Voided rows
+are logged, excluded from every metric and counted in the summary.
 
 \section{Experimental Setup}
 \label{sec:setup}
@@ -248,12 +264,11 @@ translucent bottle (7.5$\times$25.0~cm) and a tall, narrow, clear
 bottle (6.2$\times$24.0~cm). The lighting modes are \emph{white}, evenly lit and used as
 reference; \emph{warm}, a strong yellow cast; \emph{dim}, low and flat; and
 \emph{nv}, lights off with an active-infrared illuminator, producing a
-near-monochrome frame. The camera is a TP-Link Tapo C200 (1/3-in progressive-scan
-CMOS, fixed 4.0~mm lens, $f/2.0$, 1920$\times$1080 stream; vendor figures
-88.3$^\circ$ diagonal / 75.2$^\circ$ horizontal / 40.8$^\circ$ vertical). It is
-locked on a tripod and no capture parameter
-changes. The two reference cups sit at 0.40~m and 1.00~m in every scene and the
-measured object is placed at the target distance with a tape measure. One image
+near-monochrome frame. The camera is a TP-Link Tapo C200 (1/3-in
+CMOS, fixed 4.0~mm lens, $f/2.0$, 1920$\times$1080 stream), tripod-locked with
+no capture parameter changed. The two reference cups sit at 0.40~m and 1.00~m in
+every scene, and the measured object is placed at the target distance with a
+tape measure. One image
 per cell, so the design measures systematic behaviour, not shot-to-shot
 variance.
 
@@ -262,21 +277,29 @@ We benchmark five frozen backbones: Depth Anything V2 Small, Base and Large (the
 \texttt{-hf} Transformers checkpoints)~\cite{yang2024dav2}; MiDaS in its
 DPT-Hybrid form~\cite{ranftl2022midas,ranftl2021dpt}; and
 Marigold~\cite{ke2024marigold}. Detection is YOLOv8m~\cite{jocher2023yolov8} at
-confidence 0.25 for every model. All five see identical boxes, anchors and
-calibration, with box-median depth sampling. Runs used one RTX 4070 (12~GB).
+confidence 0.25 throughout, so only the depth model changes between rows; all
+five backbones see identical boxes, anchors and calibration, with box-median
+depth sampling. Runs used one RTX 4070 (12~GB).
+Marigold's diffusion sampler is seeded with a fixed generator (seed 42) at 10
+steps, one ensemble member and 768~px, so its rows are reproducible; since that
+is well below its own paper's schedule, its accuracy is a floor.
 Five models times 100 images gives 500 (model, image) pairs, of which 475 are
-scored and 25 voided.
+scored (95 per depth model) and 25 voided.
 
 \subsection{Metrics}
 For each scored row we report $|\hat Z - Z|$ and $|\hat Z - Z|/Z$ and derive MAE,
 RMSE, mean signed bias and the fraction exceeding 20~cm or 30\,\%. Sizing accuracy is mean absolute relative error of $W$ and of $H$ against
 the tape-measured table.
 
-\begin{table}[t]
+\begin{table}[!t]
 \centering
-\caption{Overall accuracy over 475 scored rows per model (25 voided rows
-excluded). Bias is the mean signed error; $>$20~cm and $>$30\,\% are gross-failure
-rates. Best value in each column is bold.}
+\caption{Overall accuracy over 475 scored rows of the 500 (model, image) pairs,
+all from the same YOLOv8m detections (95 scored rows per depth model, 25 voided
+rows excluded); only the depth
+model varies down the table. Bias is the mean signed error; $>$20~cm and
+$>$30\,\% are gross-failure rates. Marigold's row uses its native affine
+calibration, the others the disparity fit. Best value in
+each column is bold.}
 \label{tab:overall}
 \footnotesize
 \setlength{\tabcolsep}{3.5pt}
@@ -285,12 +308,12 @@ rates. Best value in each column is bold.}
 Model & MAE & rel & bias & RMSE & $>$20 & $>$30 & $W$ & $H$\\
       & (cm) & (\%) & (cm) & (cm) & (cm) & (\%) & (\%) & (\%)\\
 \midrule
-DA-V2-S & 5.78 & 8.0 & $+4.77$ & 10.71 & 12 & 7 & 12.9 & 8.3\\
+DA-V2-S & 5.78 & 8.0 & $+4.77$ & 10.71 & 11 & 7 & 12.9 & 8.3\\
 DA-V2-B & 5.35 & 7.4 & $+4.99$ & 7.83 & 5 & 1 & 11.8 & 6.1\\
 \textbf{DA-V2-L} & \textbf{3.63} & \textbf{4.9} & $+3.21$ & \textbf{5.15} &
 \textbf{0} & \textbf{0} & \textbf{9.3} & \textbf{4.9}\\
-MiDaS & 9.38 & 13.1 & $+5.26$ & 15.91 & 12 & 12 & 15.5 & 11.1\\
-Marigold & 8.55 & 12.1 & $-3.12$ & 11.62 & 3 & 2 & 14.3 & 13.5\\
+MiDaS & 9.38 & 13.1 & $+5.26$ & 15.91 & 11 & 11 & 15.5 & 11.1\\
+Marigold & 9.53 & 13.6 & $+4.65$ & 17.18 & 5 & 6 & 18.6 & 12.0\\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -306,21 +329,22 @@ evenly spread; Small's RMSE is nearly twice its MAE (10.71 vs 5.78~cm), meaning 
 few rows drive it, and that fragility rather than the mean is the real difference
 between the sizes. Base is a defensible middle ground. Accuracy is monotone in
 model size within the family, and the family beats both baselines on distance
-\emph{and} sizing. MiDaS (9.38~cm) is weakest overall; Marigold lands at 8.55~cm at
-diffusion-sampling cost (Section~\ref{sec:limits}).
+\emph{and} sizing. MiDaS (9.38~cm) is weakest overall; Marigold lands at 9.53~cm
+under its native affine calibration, at diffusion-sampling cost
+(Section~\ref{sec:limits}).
 
-Every model except Marigold over-estimates distance, with mean $\hat Z/Z$ of
-1.062 (Small), 1.067 (Base), 1.042 (Large) and 1.075 (MiDaS); Marigold
-under-estimates at 0.949. One multiplicative correction fitted on the anchors
-would recover 4--7 points of relative error for free, and would improve $W$ and
-$H$ in proportion since both scale linearly with $Z$.
+Every model over-estimates distance, with mean $\hat Z/Z$ of 1.062 (Small),
+1.067 (Base), 1.042 (Large), 1.075 (MiDaS) and 1.072 (Marigold). One
+multiplicative correction fitted on the anchors would recover 4--7 points of
+relative error for free, and $W$ and $H$ in proportion since both scale
+linearly with $Z$.
 
-\begin{table}[t]
+\begin{table}[!t]
 \centering
 \caption{MAE of $Z$ in cm / mean relative error in \%, by lighting condition
-(rows 1--4) and by object (rows 5--9). The apple has $n=15$ per model and the
-\emph{nv} rows $n=20$, because the apple is never detected at night. Marigold is
-omitted here and discussed in the text.}
+(rows 1--4) and by object (rows 5--9). The apple has $n=15$ per depth model and
+the \emph{nv} rows $n=20$, since it is never detected at night. Marigold is
+omitted; see the text.}
 \label{tab:groups}
 \footnotesize
 \setlength{\tabcolsep}{4pt}
@@ -350,26 +374,29 @@ Pooled over the Depth Anything family, dim is marginally the \emph{easiest}
 condition at 4.01~cm, ahead of white (4.20) and warm (4.65). A plausible
 mechanism is figure/ground separation: darkening the frame leaves a bright object
 against a dark background, exactly the signal a depth model exploits. Marigold
-behaves differently: it is most accurate in white light (9.4\,\%) and worst under
-infrared (14.7\,\%), the opposite ordering to the Depth Anything family.
+follows the same ordering despite a different prediction mechanism: dim is its best
+condition (8.4\,\% relative error) ahead of white (9.5\,\%) and warm (10.8\,\%),
+and infrared is worst by a wide margin (28.8\,\%).
 
 Night-time infrared is the failure mode: 7.29~cm pooled, 1.8$\times$ the dim
-error, and home to 14 of the 30 detections whose distance error exceeds 20~cm. Large degrades
+error, and home to 17 of the 32 detections whose distance error exceeds 20~cm. Large degrades
 gracefully there (4.69~cm, no outliers), Small (9.84~cm) and MiDaS (13.73~cm) do
 not. Measured luminance rules out low contrast: nv frames have the \emph{highest}
 pixel standard deviation (52.3) and dim the lowest (21.2), yet nv is worst. The
-nv frame is high-contrast because it is clipped (p95 luminance 208.8, p5 28.8):
+nv frame is high-contrast because it is clipped (p95 luminance 209.0, p5 29.0):
 blown highlights, crushed shadows, and the mid-tones carrying object texture
 removed.
 
-\subsection{Object Profile: What Is Actually Solved}
+\subsection{Object Profile: Where Accuracy Holds}
 The object panel of Table~\ref{tab:groups} is the most useful view of the
-results. Broad, squat, opaque objects are effectively solved: bowl and mug sit at
-1.2--2.4~cm and under 4\,\% for every Depth Anything size, comfortably usable for
-sizing, and the apple is similarly easy \emph{when detected} (1.57~cm for
-Small). The two bottles are the exception, and they are the only non-opaque
+results. The tested compact, opaque objects exhibit substantially lower errors
+than the bottle cases under the evaluated conditions: bowl and mug sit at
+1.2--2.4~cm and under 4\,\% for every Depth Anything size, well inside the range
+required for sizing on this set, and the apple is similarly accurate
+\emph{when detected} (1.57~cm for Small). The two bottles are the exception, and
+they are the only non-opaque
 objects: the tall one clear, the short one blue-tinted and translucent. Together they
-supply 78.7\,\% of all absolute distance error (pooled over the Depth Anything
+supply 78.8\,\% of all absolute distance error (pooled over the Depth Anything
 family): 61\,\% from the tall bottle and 17.7\,\% from the short one, against
 21\,\% for the three compact, opaque objects.
 
@@ -377,45 +404,47 @@ This resolves an apparent paradox. Large wins overall, but on the four objects
 other than the tall bottle the ranking inverts: Small achieves 1.95~cm against
 Large's 2.23~cm, so Large's advantage is earned entirely on the tall bottle and
 at night. Since Small's weights are 99~MB against Large's 1.34~GB, a factor of
-13, this is a deployment finding rather than a footnote: for near-range sizing of
+13, this is a deployment finding: for near-range sizing of
 compact objects the smallest model suffices. MiDaS has an inverted object profile
 rather than a uniformly worse one: by far the worst on the short bottle
 (20.23~cm, 29\,\%) where Depth Anything stays at 2.5--6.2~cm, yet the least
 biased on the tall bottle.
 
 \subsection{Width and Height Accuracy}
-The deliverable is dimensions, not distance, and height is roughly twice as
-accurate as width for every model (Table~\ref{tab:overall}): it is the long axis
+The deliverable is dimensions, not distance, and height is 1.4--1.9 times more
+accurate than width for every model (Table~\ref{tab:overall}): it is the long axis
 of these objects, so a fixed box error is proportionally smaller, and vertical
 edges against a table surface are clean. Width error exceeds distance error on
 both bottles, which is a box-tightness signature rather than a depth signature.
-The short bottle shows 11.1\,\% distance error against 18.6\,\% width error, the
-tall bottle 18.0\,\% against 25.4\,\%: about 7.5 points on each come from box
-geometry no depth model can fix, so roughly 40\,\% of the
-bottle width error is box and 60\,\% is depth. The apple shows no such excess
-(+0.3 points), so its width error is entirely depth; height shows none anywhere.
+Pooled over the Depth Anything V2 family, the short bottle shows 5.6\,\% distance
+error against 15.0\,\% width error and the tall bottle 19.7\,\% against
+29.6\,\%: 9.4 and 9.9 points respectively come from box geometry no depth model
+can fix, so 63\,\% of the short bottle's width error is box against 33\,\% of the
+tall bottle's. The apple shows no such excess (0.2 points), so its width error is
+entirely depth. Width also exceeds height on both bottles (29.6 against 14.6,
+15.0 against 5.4): the loose dimension is the horizontal one.
 
-\begin{figure}[t]
+\begin{figure}[!t]
 \centering
 \includegraphics[width=0.80\columnwidth]{fig3_distance.png}
 \caption{Mean absolute distance error against true object distance, all objects.
 Absolute error grows monotonically for every model but Marigold, while relative
 error grows far more slowly (Section~\ref{sec:results}), the signature of a
-correctly scaled inverse-depth fit.}
+correctly scaled depth-to-metric fit.}
 \label{fig:results}
 \end{figure}
 
 \subsection{Error Versus Distance}
 Figure~\ref{fig:results} shows absolute error growing monotonically with distance
-for every model but Marigold. Relative error grows much more slowly, to
-about 5--7\,\% for Large, the signature of a correctly scaled inverse-depth fit:
-the geometry is sound and the limits are resolution, sampling and model capacity.
-The effective range is 0.50--0.80~m, where Large stays under 4.5~cm; nothing
-here supports sizing beyond 1~m without closer anchor spacing.
+for every model but Marigold, while relative error grows far more slowly, to
+about 5--7\,\% for Large: the geometry is sound and the limits are resolution,
+sampling and model capacity. The effective range is 0.50--0.80~m, where Large
+stays under 4.5~cm; nothing here supports sizing beyond 1~m without closer
+anchor spacing.
 
 
 
-\begin{figure}[t]
+\begin{figure}[!t]
 \centering
 \includegraphics[width=\columnwidth]{fig2_qualitative.png}
 \caption{Two frames with Depth Anything V2 Large: a mug at 0.50~m in white light
@@ -435,8 +464,8 @@ of the error is over-estimation, and the bias grows with distance, from
 $+5.34$~cm at 0.50~m to $+14.05$~cm at 0.90~m. Small is worse in the same
 direction, reading a 0.90~m bottle at roughly 1.32~m.
 
-The cause is where depth is sampled, not the depth model; Figure~\ref{fig:qualitative}
-shows the case, where the bottle barely separates from the background in the
+The cause is where depth is sampled, not the depth model: Figure~\ref{fig:qualitative}
+shows the case, the bottle barely separating from the background in the
 depth map while the opaque mug pops out. The non-opaque material is a shared
 handicap, since the short bottle is translucent and still carries 17.7\,\% of the
 total error, but it does not set the magnitude: that bottle stays at 2.5--6.2~cm
@@ -447,54 +476,65 @@ The difference is silhouette and box tightness. A 24~cm-tall,
 both sides; background is farther, so a median over the interior drifts outward.
 The tall bottle is also the loosest detection in the set, with confidence down to
 0.67. A controlled sweep on the hardest folder confirms the diagnosis: on the
-night/tall-bottle images with the Small model and identical anchors, the box
-median gives 28.54~cm MAE (39.1\,\%), a box-centre sample 26.12~cm (35.5\,\%),
-and a bottom-centre sample 17.03~cm (23.0\,\%). Sampling the ground-contact
-point is a 40\,\% cut on the object carrying 61\,\% of the total error, at zero
-cost, and it is geometrically the right choice for a standing object because it
-is immune to loose horizontal box edges. (That sweep used the default YOLOv8
-nano detector, so its absolute level is not comparable with Table~\ref{tab:overall};
-the ordering is the result.)
+night/tall-bottle images with the Small depth model, YOLOv8m at 0.25 and the
+folder's own anchors, the box median gives 28.99~cm MAE (39.8\,\%), a
+box-centre sample 25.70~cm (34.8\,\%), and a bottom-centre sample 13.86~cm
+(19.0\,\%). Sampling the ground-contact point therefore reduces MAE by 52\,\% on
+that night/tall-bottle subset, for the object that carries 61\,\% of the total
+absolute error over the Depth Anything V2 backbones, without modifying or
+retraining the depth model; it is also geometrically the right choice
+for a standing object because it is immune to loose horizontal box edges. The
+gain is measured on that subset, not across the full dataset.
 
 \subsection{Voided Rows and Evaluation Integrity}
 \label{sec:integrity}
 Of 500 (model, image) pairs, 25 are voided and all 25 are the apple at night:
 in every night frame of that folder YOLOv8m returns a cup, a knife, a bowl or a
 person, never an apple, so there is nothing to size and those rows are excluded
-rather than scored against a substituted object. This matters more than 5\,\%
-suggests. An earlier evaluation selected whichever
-detection sat most confidently between the anchors, with no class filter, and so
-scored calibration cups, knives, bowls and tables in 51 of 500 rows (10.2\,\%).
-Those rows averaged 39.5~cm error against 6.5~cm for correctly scored rows and
-supplied 60--90\,\% of each model's squared error; one row that sized a knife at
-668~cm was 88\,\% of Marigold's total squared error. Correcting it roughly halved
-every model's RMSE and changed the object ranking. A pipeline with no
-expected-class gate produces plausible, entirely spurious metric errors, and a
-per-object breakdown is the cheapest defence.
+rather than scored against a substituted object. An earlier pass chose whichever
+detection sat most confidently between the anchors, with no class filter. Rebuilt
+on the stored per-image detections, that rule substitutes a calibration cup,
+knife, bowl or table in 35 of the 485 pairs containing a detection between the
+anchors (7.2\,\%): those rows average 29.3~cm error against 6.3~cm for correctly
+scored rows, supply 27--79\,\% of each model's squared error and raise RMSE by
+14--88\,\%. The worst is a knife read at 133~cm. Without an expected-class gate,
+spurious metric errors look entirely plausible; a per-object breakdown is the
+cheapest defence.
 
 \section{Limitations}
 \label{sec:limits}
 \emph{Single camera, assumed intrinsics.} The focal length comes from an assumed
-65$^\circ$ horizontal field of view because the device provided no usable EXIF
-and its published field-of-view figures are mutually inconsistent. The
-assumption was checked against the data, not guessed: back-solving $f_x$ from
-the objects' tape-measured dimensions gives 1478~px against the assumed
-1506.9~px, so width and height may be systematically low by about 2\,\%. Real
-intrinsics would shift every absolute number, not the relative comparisons;
+65$^\circ$ horizontal field of view: the device provides no usable EXIF, its
+published field-of-view figures are mutually inconsistent, and \emph{no formal
+camera calibration} (checkerboard, target or procedure) was performed, so $f_x$
+remains an assumption rather than a measured intrinsic. It is checked against the
+data: back-solving $f_x$ from the tape-measured dimensions gives 1483~px against
+the assumed 1506.9~px, so width and height may be systematically low by about
+2\,\%. That agreement is a consistency check, not a substitute for calibration.
+Real intrinsics would shift every absolute number, not the relative comparisons;
 feeding the vendor figures instead ($f_x=1245$ or 1085~px) inflates $W$ by
-28--47\,\% on the same frames.
+28--47\,\%.
 
-\emph{One shot per condition.} A single image per cell does not separate model
-variance from scene variance.
+\emph{One shot per condition.} A single image per cell means \emph{capture-to-capture
+variability is not evaluated}: the scores measure systematic model behaviour on
+one frame per condition and cannot separate model variance from scene or capture
+variance. Bounding shot-to-shot noise would need the cells re-shot, which we did
+not do.
 
-\emph{Marigold is not reproducible as configured.} The diffusion sampler starts
-without a fixed generator or latents and ran at 10 steps with one ensemble member
-at 768~px rather than 50 steps and 10 members; its number moved from 17.46 to
-8.55~cm between runs, so it should not be quoted as a Marigold result until the
-seed and schedule are fixed. All five models, Marigold included, were evaluated
-under the same inverse-depth fit \eqref{eq:inverse}, so the comparison is like for
-like; Table~\ref{tab:calib} shows that for Marigold the two fits are within
-0.1~cm of each other, so the shared fit costs it nothing measurable either way.
+\emph{Marigold is compute-limited, not reproducibility-limited.} Its 10-step,
+single-member, 768-px schedule costs roughly fifty times less sampling compute
+than its own paper's (10 denoising passes per image against 500), so its 9.53~cm
+is a floor on Marigold's accuracy and not a compute-matched comparison with
+regression heads that cost milliseconds per image. What is no longer a
+limitation is \emph{sampler} repeatability (not capture repeatability): the
+sampler is seeded with a fixed generator (seed
+42), and reseeding moves the full-set MAE by 0.2~cm under the affine fit (9.31
+against 9.53~cm). The same reseeding moved it by more than 7~cm under the
+disparity fit, because Marigold's direct-depth output makes \eqref{eq:inverse}
+near-singular; that instability, not the model, is why Marigold is the one
+backbone scored under \eqref{eq:affine}. Each family is therefore evaluated under
+the fit its output implies, and Table~\ref{tab:calib} prices that choice:
+2.7--3.6$\times$ in MAE for the regression heads, 1.7$\times$ for Marigold.
 
 \emph{Night is confounded with clipping.} Until an exposure bracket is captured,
 ``depth degrades under infrared'' is not separable from ``this camera clipped the
@@ -506,15 +546,21 @@ and 1.00~m constants, so the geometry is identical but the scenes are not.
 A frozen detector, a frozen depth model and two clicked anchors recover object
 dimensions from one RGB frame with useful accuracy: Depth Anything V2 Large
 reaches 3.63~cm mean distance error and 9.3\,\% / 4.9\,\% width / height error
-across 100 images spanning four lighting conditions, with no gross failures. The
-aggregate alone is misleading: bowl and mug sizing is essentially solved at
-1--2\,\%, while one tall clear bottle contributes 61\,\% of the total
-error, and that error is a signed, distance-growing bias caused by sampling
-inside a loose box rather than by a depth failure. Night-time behaviour is
+across 100 images spanning four lighting conditions. The
+aggregate alone is misleading: the bowl and mug exhibit comparatively low errors
+under the evaluated conditions, while the tall clear bottle contributes
+disproportionately to the aggregate error, a signed,
+distance-growing bias caused by sampling
+inside a loose box rather than by a depth failure. Sampling the ground-contact
+point instead reduces MAE by 52\,\% on the investigated night/tall-bottle
+subset, without modifying or retraining the model. Night-time behaviour is
 limited by clipped highlights, and honest evaluation requires voiding rows where
-the subject is never detected.
+the subject is never detected. The scope is five objects, one camera and one
+image per experimental condition.
 
 
+
+\clearpage
 
 \begin{thebibliography}{15}
 \bibitem{eigen2014depth}

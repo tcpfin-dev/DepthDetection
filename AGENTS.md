@@ -144,6 +144,18 @@ without anchors at all, so those flags bypass the per-folder requirement.
 (default `nano`; `--yolo <weights>` overrides it). `medium` detects the dataset's
 small objects (apple, b02 bottle) far more reliably than `nano`, while `large`
 has not consistently helped.
+`--seed` (default `42`) seeds Marigold's diffusion sampler through an explicit
+`torch.Generator`, so a Marigold run is reproducible and `meta.depth_seed`
+records the value; the regression heads ignore it. Marigold is scored under
+`--calib affine` (its native basis), not the default inverse fit: for its
+direct-depth output the disparity fit is near-singular, which costs 1.7x MAE and
+even voids extra rows by driving some boxes to a non-positive Z.
+**A single-model rerun does NOT preserve the other models' eval rows**:
+`write_eval` rewrites `eval_*.csv` from the rows of the run in progress, so
+`--depth-model marigold --out outputs` replaces the five-model tables with a
+one-model table. Run into a scratch `--out` and merge the new `<model>` rows into
+the existing `eval_per_image.csv` (coercing the numeric columns back to float)
+before calling `write_eval` again.
 The evaluation is computed on the
 **middle object** (the detection whose box centre lies between the two anchor
 pixels), with MAE / RMSE of Z in cm and the relative %; ground truth comes from
@@ -226,6 +238,19 @@ overlay image) to `outputs/` next to it at the **repository root** by default
 scripts keep their own `test/outputs/`. The YOLO script writes its downloaded
 `.pt` weights into the **current working directory** on first run, so run it from
 a predictable directory.
+
+## Reproducing the paper
+
+`REPRODUCE.md` at the root is the authoritative recipe: the exact commands behind
+every table and figure in `paper/`, the fixed configuration (YOLOv8m at 0.25,
+inverse fit for the regression heads and affine for Marigold, seed 42), and the
+numbers each command must print. Two helpers ship with it:
+
+- `merge_eval_trees.py` - assembles one eval tree from several per-model runs
+  (needed because a batch rewrites `eval_*.csv` from its own rows, and Marigold
+  must run under a different `--calib` from the regression heads).
+- `verify_paper_numbers.py` - recomputes every quoted value from
+  `outputs/eval_per_image.csv` and prints it next to the paper's table.
 
 ## Conventions / gotchas
 
